@@ -29,7 +29,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from api.v1 import auth, sales, inventory, customers, forecast, anomaly, chatbot, dashboard
+from api.v1 import auth, sales, inventory, customers, forecast, anomaly, chatbot, dashboard, system
 
 app.include_router(auth.router,      prefix="/api/v1/auth",      tags=["Auth"])
 app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["Dashboard"])
@@ -39,6 +39,7 @@ app.include_router(customers.router, prefix="/api/v1/customers", tags=["Customer
 app.include_router(forecast.router,  prefix="/api/v1/forecast",  tags=["Forecast"])
 app.include_router(anomaly.router,   prefix="/api/v1/anomaly",   tags=["Anomaly"])
 app.include_router(chatbot.router,   prefix="/api/v1/chatbot",   tags=["Chatbot"])
+app.include_router(system.router,    prefix="/api/v1/system",    tags=["System"])
 
 
 @app.get("/health")

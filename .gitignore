@@ -9,7 +9,10 @@ build/
 .venv/
 venv/
 env/
-.env
+backend/vnev/
+backend/venv/
+backend/.venv/
+.env/
 
 # Node / React
 node_modules/

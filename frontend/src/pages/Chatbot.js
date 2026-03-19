@@ -17,17 +17,6 @@ import { useAuthStore } from '../store/authStore';
 
 const { Text } = Typography;
 
-const SUGGESTIONS = [
-  "What are my top 5 products by revenue?",
-  "Which customers are at churn risk?",
-  "Show me low stock alerts",
-  "What is the revenue forecast for next month?",
-  "Which region has the highest sales?",
-  "Are there any anomalies in revenue?",
-  "What is our customer growth trend?",
-  "Which sales channel performs best?",
-];
-
 // ── Message Bubble ────────────────────────────────────────────────────────
 function MessageBubble({ msg, userName }) {
   const isUser = msg.role === 'user';
@@ -126,6 +115,7 @@ function TypingIndicator() {
 // ── Main Chatbot ──────────────────────────────────────────────────────────
 export default function Chatbot() {
   const { user } = useAuthStore();
+  const [suggestions, setSuggestions] = useState([]);
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
@@ -141,6 +131,18 @@ export default function Chatbot() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
+
+  useEffect(() => {
+    const fetchSuggestions = async () => {
+      try {
+        const res = await axios.get('/api/v1/chatbot/suggestions');
+        setSuggestions(res.data?.suggestions || []);
+      } catch (e) {
+        setSuggestions([]);
+      }
+    };
+    fetchSuggestions();
+  }, []);
 
   const now = () =>
     new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -300,7 +302,7 @@ export default function Chatbot() {
             style={{ borderRadius: 12, marginBottom: 16 }}
           >
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {SUGGESTIONS.map((q, i) => (
+              {suggestions.map((q, i) => (
                 <Button
                   key={i}
                   type="text"

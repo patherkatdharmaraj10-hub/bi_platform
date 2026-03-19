@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Layout, Menu, Avatar, Typography, Badge, Tag, Tooltip } from 'antd';
+import { Layout, Menu, Avatar, Typography, Tag, Dropdown } from 'antd';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   DashboardOutlined, ShoppingCartOutlined, InboxOutlined,
@@ -80,6 +80,7 @@ export default function MainLayout() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const { user, logout } = useAuthStore();
+  const siderWidth = collapsed ? 80 : 220;
 
   const role = user?.role || 'viewer';
 
@@ -93,12 +94,20 @@ export default function MainLayout() {
     }));
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
+    <Layout style={{ height: '100vh', overflow: 'hidden' }}>
       <Sider
         collapsible
         collapsed={collapsed}
         onCollapse={setCollapsed}
-        style={{ background: '#001529' }}
+        style={{
+          background: '#001529',
+          position: 'fixed',
+          left: 0,
+          top: 0,
+          bottom: 0,
+          height: '100vh',
+          overflow: 'auto',
+        }}
         width={220}
       >
         {/* Logo */}
@@ -132,48 +141,9 @@ export default function MainLayout() {
           items={menuItems}
           onClick={({ key }) => navigate(key)}
         />
-
-        {/* User info at bottom */}
-        {!collapsed && (
-          <div style={{
-            position: 'absolute',
-            bottom: 60,
-            left: 0,
-            right: 0,
-            padding: '12px 16px',
-            borderTop: '1px solid rgba(255,255,255,0.1)',
-            background: 'rgba(0,0,0,0.2)',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Avatar
-                size={28}
-                style={{ background: ROLE_COLOR[role], fontSize: 12 }}
-              >
-                {user?.full_name?.[0]?.toUpperCase() || 'U'}
-              </Avatar>
-              <div style={{ overflow: 'hidden' }}>
-                <Text style={{
-                  color: '#fff', fontSize: 12,
-                  display: 'block', fontWeight: 500,
-                  overflow: 'hidden', textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}>
-                  {user?.full_name}
-                </Text>
-                <Tag
-                  icon={ROLE_ICON[role]}
-                  color={ROLE_COLOR[role]}
-                  style={{ fontSize: 10, padding: '0 4px', marginTop: 2 }}
-                >
-                  {role.toUpperCase()}
-                </Tag>
-              </div>
-            </div>
-          </div>
-        )}
       </Sider>
 
-      <Layout>
+      <Layout style={{ marginLeft: siderWidth, transition: 'margin-left 0.2s', minWidth: 0 }}>
         {/* Header */}
         <Header style={{
           background: '#fff',
@@ -188,23 +158,83 @@ export default function MainLayout() {
             {ALL_MENU_ITEMS.find(m => m.key === pathname)?.label || 'BI Platform'}
           </Text>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-            <Tag
-              icon={ROLE_ICON[role]}
-              color={ROLE_COLOR[role]}
+          <Dropdown
+            menu={{
+              items: [
+                {
+                  type: 'group',
+                  label: (
+                    <div style={{ padding: '8px 0', textAlign: 'center' }}>
+                      <div style={{ fontWeight: 600, color: '#333', marginBottom: 4 }}>
+                        {user?.full_name}
+                      </div>
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        {user?.email}
+                      </Text>
+                      <div style={{ marginTop: 8 }}>
+                        <Tag icon={ROLE_ICON[role]} color={ROLE_COLOR[role]} style={{ fontSize: 11 }}>
+                          {role.toUpperCase()}
+                        </Tag>
+                      </div>
+                    </div>
+                  ),
+                },
+                { type: 'divider' },
+                {
+                  key: 'settings',
+                  icon: <SettingOutlined />,
+                  label: 'Settings',
+                  onClick: () => navigate('/settings'),
+                },
+                {
+                  key: 'logout',
+                  icon: <LogoutOutlined />,
+                  label: 'Logout',
+                  danger: true,
+                  onClick: logout,
+                },
+              ],
+            }}
+            placement="bottomRight"
+            trigger={['click']}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                cursor: 'pointer',
+                padding: '8px 12px',
+                borderRadius: 6,
+                transition: 'background 0.2s',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#f5f5f5';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+              }}
             >
-              {role.toUpperCase()}
-            </Tag>
-            <Text style={{ color: '#666', fontSize: 13 }}>
-              {user?.email}
-            </Text>
-            <Tooltip title="Logout">
-              <LogoutOutlined
-                onClick={logout}
-                style={{ cursor: 'pointer', color: '#999', fontSize: 16 }}
-              />
-            </Tooltip>
-          </div>
+              <Avatar
+                size={32}
+                style={{
+                  background: ROLE_COLOR[role],
+                  fontSize: 14,
+                  fontWeight: 600,
+                }}
+              >
+                {user?.full_name?.[0]?.toUpperCase() || 'U'}
+              </Avatar>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <Text style={{ fontSize: 13, fontWeight: 600, color: '#333' }}>
+                  {user?.full_name?.split(' ')[0] || 'User'}
+                </Text>
+                <Text type="secondary" style={{ fontSize: 11 }}>
+                  {role.charAt(0).toUpperCase() + role.slice(1)}
+                </Text>
+              </div>
+            </div>
+          </Dropdown>
         </Header>
 
         {/* Main content */}
@@ -214,6 +244,7 @@ export default function MainLayout() {
           borderRadius: 8,
           padding: '24px',
           minHeight: 'calc(100vh - 112px)',
+          overflow: 'auto',
         }}>
           <Outlet />
         </Content>
