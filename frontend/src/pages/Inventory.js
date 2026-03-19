@@ -6,13 +6,16 @@ import React, { useState, useEffect } from 'react';
 import {
   Card, Table, Tag, Badge, Row, Col,
   Statistic, Alert, Button, Input,
-  Spin, Progress, Typography,
+  Spin, Progress, Typography, Modal,
+  Form, InputNumber, Select, Space, message, DatePicker,
 } from 'antd';
 import {
   SearchOutlined, ReloadOutlined,
   WarningOutlined, CheckCircleOutlined,
   CloseCircleOutlined,
+  PlusOutlined, EditOutlined,
 } from '@ant-design/icons';
+import dayjs from 'dayjs';
 import axios from '../api/axios';
 
 const { Text } = Typography;
@@ -25,32 +28,145 @@ const STATUS_CONFIG = {
 
 export default function Inventory() {
   const [data, setData]       = useState([]);
+  const [records, setRecords] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [warehouses, setWarehouses] = useState([]);
   const [summary, setSummary] = useState(null);
   const [alerts, setAlerts]   = useState([]);
   const [loading, setLoading] = useState(true);
+  const [recordLoading, setRecordLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingRecord, setEditingRecord] = useState(null);
   const [search, setSearch]   = useState('');
   const [error, setError]     = useState(null);
+  const [selectedProductStock, setSelectedProductStock] = useState(null);
+  const [selectedProductReorderPoint, setSelectedProductReorderPoint] = useState(null);
+  const [selectedProductSourceWarehouse, setSelectedProductSourceWarehouse] = useState('Kathmandu');
+  const [form] = Form.useForm();
+  const disablePastDate = (current) => current && current.startOf('day').isBefore(dayjs().startOf('day'));
 
   const fetchData = async () => {
     setLoading(true);
+    setRecordLoading(true);
     setError(null);
     try {
-      const [inv, sum, alt] = await Promise.all([
+      const [inv, sum, alt, rec, prod, wh] = await Promise.all([
         axios.get('/api/v1/inventory/status'),
         axios.get('/api/v1/inventory/summary'),
         axios.get('/api/v1/inventory/alerts'),
+        axios.get('/api/v1/inventory/records?limit=300'),
+        axios.get('/api/v1/inventory/products'),
+        axios.get('/api/v1/inventory/warehouses'),
       ]);
       setData(inv.data);
       setSummary(sum.data);
       setAlerts(alt.data.alerts || []);
+      setRecords(rec.data);
+      setProducts(prod.data);
+      setWarehouses(wh.data || []);
     } catch (e) {
       setError('Failed to load inventory data.');
     } finally {
       setLoading(false);
+      setRecordLoading(false);
     }
   };
 
   useEffect(() => { fetchData(); }, []);
+
+  const openCreate = () => {
+    setEditingRecord(null);
+    setSelectedProductStock(null);
+    setSelectedProductReorderPoint(null);
+    setSelectedProductSourceWarehouse('Kathmandu');
+    form.resetFields();
+    form.setFieldsValue({
+      quantity_on_hand: 0,
+      reorder_point: 50,
+      reorder_quantity: 200,
+      warehouse: 'Kathmandu',
+      last_restocked: dayjs(),
+    });
+    setModalOpen(true);
+  };
+
+  const openEdit = (record) => {
+    setEditingRecord(record);
+    setSelectedProductStock(Number(record.quantity_on_hand || 0));
+    setSelectedProductReorderPoint(Number(record.reorder_point || 0));
+    setSelectedProductSourceWarehouse(record.warehouse || 'Kathmandu');
+    form.setFieldsValue({
+      product_id: record.product_id,
+      warehouse: record.warehouse,
+      quantity_on_hand: record.quantity_on_hand,
+      reorder_point: record.reorder_point,
+      reorder_quantity: record.reorder_quantity,
+      last_restocked: record.last_restocked ? dayjs(record.last_restocked) : dayjs(),
+    });
+    setModalOpen(true);
+  };
+
+  const handleProductChange = async (productId) => {
+    try {
+      const res = await axios.get(`/api/v1/inventory/product-defaults/${productId}`);
+      const currentStock = Number(res.data?.quantity_on_hand || 0);
+      const currentReorderPoint = Number(res.data?.reorder_point || 50);
+      const currentReorderQty = Number(res.data?.reorder_quantity || 200);
+      const sourceWarehouse = res.data?.warehouse || 'Kathmandu';
+
+      setSelectedProductStock(currentStock);
+      setSelectedProductReorderPoint(currentReorderPoint);
+      setSelectedProductSourceWarehouse(sourceWarehouse);
+      form.setFieldsValue({
+        quantity_on_hand: currentStock,
+        reorder_point: currentReorderPoint,
+        reorder_quantity: currentReorderQty,
+      });
+    } catch (e) {
+      setSelectedProductStock(null);
+      setSelectedProductReorderPoint(null);
+      setSelectedProductSourceWarehouse('Kathmandu');
+      message.error('Failed to load product inventory values from database.');
+    }
+  };
+
+  const submitRecord = async () => {
+    try {
+      const values = await form.validateFields();
+      setSaving(true);
+
+      const payload = {
+        product_id: Number(values.product_id),
+        warehouse: values.warehouse,
+        quantity_on_hand: Number(values.quantity_on_hand),
+        reorder_point: Number(values.reorder_point),
+        reorder_quantity: Number(values.reorder_quantity),
+        last_restocked: values.last_restocked ? values.last_restocked.toISOString() : null,
+      };
+
+      if (editingRecord) {
+        await axios.put(`/api/v1/inventory/records/${editingRecord.id}`, payload);
+        message.success('Inventory record updated successfully.');
+      } else {
+        await axios.post('/api/v1/inventory/records', payload);
+        message.success('Inventory record added successfully.');
+      }
+
+      setModalOpen(false);
+      form.resetFields();
+      fetchData();
+    } catch (e) {
+      const detail = e?.response?.data?.detail;
+      if (detail) {
+        message.error(detail);
+      } else if (!e?.errorFields) {
+        message.error('Unable to save inventory record.');
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const filtered = data.filter(item =>
     item.name?.toLowerCase().includes(search.toLowerCase()) ||
@@ -127,6 +243,52 @@ export default function Inventory() {
     },
   ];
 
+  const operationColumns = [
+    {
+      title: 'Product', key: 'product',
+      render: (_, r) => (
+        <div>
+          <Text strong>{r.name}</Text>
+          <br />
+          <Text type="secondary" style={{ fontSize: 11 }}>{r.sku}</Text>
+        </div>
+      ),
+    },
+    {
+      title: 'Category', dataIndex: 'category', key: 'category',
+      render: c => <Tag color="blue">{c}</Tag>,
+    },
+    {
+      title: 'Warehouse', dataIndex: 'warehouse', key: 'warehouse',
+      render: w => <Tag color="purple">{w}</Tag>,
+    },
+    {
+      title: 'On Hand', dataIndex: 'quantity_on_hand', key: 'quantity_on_hand',
+      sorter: (a, b) => a.quantity_on_hand - b.quantity_on_hand,
+    },
+    {
+      title: 'Reorder Point', dataIndex: 'reorder_point', key: 'reorder_point',
+    },
+    {
+      title: 'Reorder Qty', dataIndex: 'reorder_quantity', key: 'reorder_quantity',
+    },
+    {
+      title: 'Status', dataIndex: 'status', key: 'status',
+      render: s => {
+        const cfg = STATUS_CONFIG[s] || STATUS_CONFIG.in_stock;
+        return <Tag color={cfg.tagColor}>{cfg.label}</Tag>;
+      },
+    },
+    {
+      title: 'Action', key: 'action',
+      render: (_, r) => (
+        <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(r)}>
+          Edit
+        </Button>
+      ),
+    },
+  ];
+
   return (
     <div>
       <div style={{
@@ -139,13 +301,18 @@ export default function Inventory() {
             {data.length} products across all warehouses
           </Text>
         </div>
-        <Button
-          icon={<ReloadOutlined />}
-          onClick={fetchData}
-          loading={loading}
-        >
-          Refresh
-        </Button>
+        <Space>
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+            Add Inventory
+          </Button>
+          <Button
+            icon={<ReloadOutlined />}
+            onClick={fetchData}
+            loading={loading}
+          >
+            Refresh
+          </Button>
+        </Space>
       </div>
 
       {error && (
@@ -242,6 +409,120 @@ export default function Inventory() {
           size="middle"
         />
       </Card>
+
+      <Card
+        title="Inventory Operations"
+        style={{ borderRadius: 12, marginTop: 16 }}
+        extra={<Tag color="cyan">Create / Edit</Tag>}
+      >
+        <Table
+          dataSource={records}
+          columns={operationColumns}
+          rowKey="id"
+          loading={recordLoading}
+          pagination={{ pageSize: 10 }}
+          size="middle"
+        />
+      </Card>
+
+      <Modal
+        title={editingRecord ? 'Edit Inventory Record' : 'Add Inventory Record'}
+        open={modalOpen}
+        onCancel={() => setModalOpen(false)}
+        onOk={submitRecord}
+        confirmLoading={saving}
+        okText={editingRecord ? 'Update Inventory' : 'Create Inventory'}
+        width={720}
+        destroyOnClose
+      >
+        <Form form={form} layout="vertical">
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item
+                name="product_id"
+                label="Product"
+                rules={[{ required: true, message: 'Product is required' }]}
+              >
+                <Select
+                  showSearch
+                  placeholder="Select product"
+                  optionFilterProp="label"
+                  onChange={handleProductChange}
+                  options={products.map(p => ({
+                    value: p.id,
+                    label: `${p.name} (${p.sku})`,
+                  }))}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="warehouse"
+                label="Warehouse"
+                rules={[{ required: true, message: 'Warehouse is required' }]}
+              >
+                <Select
+                  placeholder="Select warehouse"
+                  options={[{ value: 'Kathmandu', label: 'Kathmandu' }]}
+                  disabled
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={12} style={{ marginBottom: 8 }}>
+            <Col span={24}>
+              <Alert
+                type="info"
+                showIcon
+                message={`Current Database Values (${selectedProductSourceWarehouse}) - Quantity On Hand: ${selectedProductStock ?? '-'} | Reorder Point: ${selectedProductReorderPoint ?? '-'}`}
+              />
+            </Col>
+          </Row>
+
+          <Row gutter={12}>
+            <Col span={8}>
+              <Form.Item
+                name="last_restocked"
+                label="Restock Date"
+                rules={[{ required: true, message: 'Restock date is required' }]}
+              >
+                <DatePicker style={{ width: '100%' }} disabledDate={disablePastDate} />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={12}>
+            <Col span={8}>
+              <Form.Item
+                name="quantity_on_hand"
+                label="Quantity On Hand"
+                rules={[{ required: true, message: 'Quantity is required' }]}
+              >
+                <InputNumber min={0} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item
+                name="reorder_point"
+                label="Reorder Point"
+                rules={[{ required: true, message: 'Reorder point is required' }]}
+              >
+                <InputNumber min={0} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item
+                name="reorder_quantity"
+                label="Reorder Quantity"
+                rules={[{ required: true, message: 'Reorder quantity is required' }]}
+              >
+                <InputNumber min={1} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+          </Row>
+        </Form>
+      </Modal>
 
       <style>{`
         .row-danger td { background: #fff2f0 !important; }

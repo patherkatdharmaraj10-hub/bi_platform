@@ -5,17 +5,19 @@
 import React, { useState, useEffect } from 'react';
 import {
   Row, Col, Card, Statistic, Table, Tag,
-  Select, Button, Spin, Alert, Typography, DatePicker,
+  Select, Button, Spin, Alert, Typography,
+  Modal, Form, Input, InputNumber, message,
 } from 'antd';
 import {
-  ArrowUpOutlined, ArrowDownOutlined,
-  ReloadOutlined, DownloadOutlined,
+  ReloadOutlined,
+  PlusOutlined, EditOutlined,
 } from '@ant-design/icons';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, PieChart, Pie,
   Cell, Legend, LineChart, Line,
 } from 'recharts';
+import dayjs from 'dayjs';
 import axios from '../api/axios';
 
 const { Text } = Typography;
@@ -30,33 +32,125 @@ export default function Sales() {
   const [byRegion, setByRegion]   = useState([]);
   const [monthly, setMonthly]     = useState([]);
   const [topProducts, setTopProducts] = useState([]);
+  const [records, setRecords]     = useState([]);
+  const [products, setProducts]   = useState([]);
+  const [customers, setCustomers] = useState([]);
   const [loading, setLoading]     = useState(true);
+  const [recordLoading, setRecordLoading] = useState(false);
+  const [saving, setSaving]       = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingSale, setEditingSale] = useState(null);
   const [error, setError]         = useState(null);
+  const [form] = Form.useForm();
 
   const fetchData = async () => {
     setLoading(true);
+    setRecordLoading(true);
     setError(null);
     try {
-      const [s, c, r, m, p] = await Promise.all([
+      const [s, c, r, m, p, rec, prod, cust] = await Promise.all([
         axios.get(`/api/v1/sales/summary?period=${period}`),
         axios.get(`/api/v1/sales/by-category?period=${period}`),
         axios.get(`/api/v1/sales/by-region?period=${period}`),
         axios.get('/api/v1/sales/monthly-trend'),
         axios.get(`/api/v1/sales/top-products?period=${period}&limit=10`),
+        axios.get('/api/v1/sales/records?limit=100'),
+        axios.get('/api/v1/sales/products'),
+        axios.get('/api/v1/sales/customers'),
       ]);
       setSummary(s.data);
       setByCategory(c.data);
       setByRegion(r.data);
       setMonthly(m.data);
       setTopProducts(p.data);
+      setRecords(rec.data);
+      setProducts(prod.data);
+      setCustomers(cust.data);
     } catch (e) {
       setError('Failed to load sales data.');
     } finally {
       setLoading(false);
+      setRecordLoading(false);
     }
   };
 
   useEffect(() => { fetchData(); }, [period]);
+
+  const openCreate = () => {
+    setEditingSale(null);
+    form.resetFields();
+    form.setFieldsValue({
+      quantity: 1,
+      discount_pct: 0,
+      channel: 'retail',
+      region: 'Bagmati',
+    });
+    setModalOpen(true);
+  };
+
+  const openEdit = (record) => {
+    setEditingSale(record);
+    form.setFieldsValue({
+      product_id: record.product_id,
+      customer_id: record.customer_id,
+      quantity: record.quantity,
+      unit_price: Number(record.unit_price),
+      discount_pct: Number(record.discount || 0) * 100,
+      region: record.region || 'Bagmati',
+      channel: record.channel,
+    });
+    setModalOpen(true);
+  };
+
+  const handleProductChange = (productId) => {
+    const selected = products.find(p => p.id === productId);
+    if (!selected) return;
+    const currentPrice = form.getFieldValue('unit_price');
+    if (!currentPrice || Number(currentPrice) <= 0) {
+      form.setFieldsValue({ unit_price: Number(selected.price) });
+    }
+  };
+
+  const submitSale = async () => {
+    try {
+      const values = await form.validateFields();
+      setSaving(true);
+
+      const payload = {
+        product_id: Number(values.product_id),
+        customer_id: values.customer_id ? Number(values.customer_id) : null,
+        quantity: Number(values.quantity),
+        unit_price: values.unit_price ? Number(values.unit_price) : null,
+        discount: Number(values.discount_pct || 0) / 100,
+        region: values.region || null,
+        channel: values.channel,
+        sale_date: editingSale
+          ? (editingSale.sale_date || dayjs().toISOString())
+          : dayjs().toISOString(),
+      };
+
+      if (editingSale) {
+        await axios.put(`/api/v1/sales/records/${editingSale.id}`, payload);
+        message.success('Sale updated successfully.');
+      } else {
+        await axios.post('/api/v1/sales/records', payload);
+        message.success('Sale added successfully.');
+      }
+
+      setModalOpen(false);
+      form.resetFields();
+      fetchData();
+    } catch (e) {
+      const detail = e?.response?.data?.detail;
+      if (detail) {
+        message.error(detail);
+      } else if (!e?.errorFields) {
+        message.error('Unable to save sale record.');
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const productColumns = [
     {
@@ -94,6 +188,58 @@ export default function Sales() {
     '1y': 'Last 1 Year',
   };
 
+  const saleColumns = [
+    {
+      title: 'Date', dataIndex: 'sale_date', key: 'sale_date',
+      render: v => dayjs(v).format('YYYY-MM-DD HH:mm'),
+      sorter: (a, b) => dayjs(a.sale_date).valueOf() - dayjs(b.sale_date).valueOf(),
+      defaultSortOrder: 'descend',
+    },
+    {
+      title: 'Product', key: 'product',
+      render: (_, r) => (
+        <div>
+          <Text strong>{r.product_name}</Text>
+          <br />
+          <Text type="secondary" style={{ fontSize: 11 }}>{r.sku}</Text>
+        </div>
+      ),
+    },
+    {
+      title: 'Qty', dataIndex: 'quantity', key: 'quantity',
+      render: v => <Tag color="blue">{v}</Tag>,
+    },
+    {
+      title: 'Channel', dataIndex: 'channel', key: 'channel',
+      render: v => <Tag color="purple">{String(v || '').toUpperCase()}</Tag>,
+    },
+    {
+      title: 'Region', dataIndex: 'region', key: 'region',
+      render: v => v ? <Tag>{v}</Tag> : <Text type="secondary">N/A</Text>,
+    },
+    {
+      title: 'Revenue', dataIndex: 'total_amount', key: 'total_amount',
+      render: v => <Text strong style={{ color: '#1677ff' }}>NPR {Number(v).toLocaleString()}</Text>,
+      sorter: (a, b) => Number(a.total_amount) - Number(b.total_amount),
+    },
+    {
+      title: 'Margin %', dataIndex: 'margin_pct', key: 'margin_pct',
+      render: v => (
+        <Tag color={Number(v) >= 25 ? 'green' : Number(v) >= 10 ? 'orange' : 'red'}>
+          {Number(v).toFixed(2)}%
+        </Tag>
+      ),
+    },
+    {
+      title: 'Action', key: 'action',
+      render: (_, r) => (
+        <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(r)}>
+          Edit
+        </Button>
+      ),
+    },
+  ];
+
   return (
     <div>
       {/* Header */}
@@ -106,6 +252,9 @@ export default function Sales() {
           <Text type="secondary">{PERIOD_LABELS[period]}</Text>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+            Add Sale
+          </Button>
           <Select
             value={period}
             onChange={setPeriod}
@@ -341,6 +490,106 @@ export default function Sales() {
           size="middle"
         />
       </Card>
+
+      <Card
+        title="Sales Operations"
+        style={{ borderRadius: 12, marginTop: 16 }}
+        extra={<Tag color="cyan">Latest 100</Tag>}
+      >
+        <Table
+          dataSource={records}
+          columns={saleColumns}
+          rowKey="id"
+          loading={recordLoading}
+          pagination={{ pageSize: 10 }}
+          size="middle"
+        />
+      </Card>
+
+      <Modal
+        title={editingSale ? 'Edit Sale Record' : 'Add Sale Record'}
+        open={modalOpen}
+        onCancel={() => setModalOpen(false)}
+        onOk={submitSale}
+        confirmLoading={saving}
+        okText={editingSale ? 'Update Sale' : 'Create Sale'}
+        width={760}
+        destroyOnClose
+      >
+        <Form form={form} layout="vertical">
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item name="product_id" label="Product" rules={[{ required: true, message: 'Product is required' }]}>
+                <Select
+                  showSearch
+                  placeholder="Select product"
+                  optionFilterProp="label"
+                  onChange={handleProductChange}
+                  options={products.map(p => ({
+                    value: p.id,
+                    label: `${p.name} (${p.sku})`,
+                  }))}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="customer_id" label="Customer (optional)">
+                <Select
+                  allowClear
+                  showSearch
+                  placeholder="Select customer by name or ID"
+                  optionFilterProp="label"
+                  options={customers.map(c => ({
+                    value: c.id,
+                    label: `${c.name} (ID: ${c.id})`,
+                  }))}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={12}>
+            <Col span={8}>
+              <Form.Item name="quantity" label="Quantity" rules={[{ required: true, message: 'Quantity is required' }]}>
+                <InputNumber style={{ width: '100%' }} min={1} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="unit_price" label="Unit Price (NPR)" rules={[{ required: true, message: 'Unit price is required' }]}>
+                <InputNumber style={{ width: '100%' }} min={0.01} precision={2} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="discount_pct" label="Discount %">
+                <InputNumber style={{ width: '100%' }} min={0} max={100} precision={2} />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item name="channel" label="Channel" rules={[{ required: true, message: 'Channel is required' }]}>
+                <Select>
+                  <Option value="online">Online</Option>
+                  <Option value="retail">Retail</Option>
+                  <Option value="wholesale">Wholesale</Option>
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="region" label="Region">
+                <Select placeholder="Select region">
+                  <Option value="Bagmati">Bagmati</Option>
+                  <Option value="Koshi">Koshi</Option>
+                  <Option value="Gandaki">Gandaki</Option>
+                  <Option value="Lumbini">Lumbini</Option>
+                  <Option value="Madhesh">Madhesh</Option>
+                </Select>
+              </Form.Item>
+            </Col>
+          </Row>
+        </Form>
+      </Modal>
     </div>
   );
 }
