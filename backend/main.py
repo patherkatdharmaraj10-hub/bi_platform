@@ -1,0 +1,54 @@
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
+from contextlib import asynccontextmanager
+from core.database import engine, Base
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield
+    await engine.dispose()
+
+
+app = FastAPI(
+    title="AI-Powered BI Platform",
+    description="Business Intelligence with ML forecasting and AI chatbot",
+    version="1.0.0",
+    lifespan=lifespan,
+)
+
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+from api.v1 import auth, sales, inventory, customers, forecast, anomaly, chatbot, dashboard
+
+app.include_router(auth.router,      prefix="/api/v1/auth",      tags=["Auth"])
+app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["Dashboard"])
+app.include_router(sales.router,     prefix="/api/v1/sales",     tags=["Sales"])
+app.include_router(inventory.router, prefix="/api/v1/inventory", tags=["Inventory"])
+app.include_router(customers.router, prefix="/api/v1/customers", tags=["Customers"])
+app.include_router(forecast.router,  prefix="/api/v1/forecast",  tags=["Forecast"])
+app.include_router(anomaly.router,   prefix="/api/v1/anomaly",   tags=["Anomaly"])
+app.include_router(chatbot.router,   prefix="/api/v1/chatbot",   tags=["Chatbot"])
+
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "version": "1.0.0"}
+
+
+@app.get("/")
+async def root():
+    return {
+        "message": "BI Platform API is running!",
+        "docs": "http://localhost:8000/docs"
+    }
