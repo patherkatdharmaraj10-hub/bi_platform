@@ -5,11 +5,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   Card, Input, Button, Tag, Typography,
-  Avatar, Spin, Alert, Row, Col, Divider,
+  Avatar, Row, Col,
 } from 'antd';
 import {
   SendOutlined, RobotOutlined,
-  UserOutlined, ClearOutlined,
+  ClearOutlined,
   BulbOutlined,
 } from '@ant-design/icons';
 import axios from '../api/axios';
@@ -119,7 +119,7 @@ export default function Chatbot() {
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
-      content: `Hello ${user?.full_name || 'there'}! 👋\n\nI'm your AI Business Intelligence assistant. I can help you analyze:\n\n• Sales performance and trends\n• Inventory status and alerts\n• Customer insights and churn risk\n• Revenue forecasts\n• Anomaly detection\n\nWhat would you like to know?`,
+      content: `Hello ${user?.full_name || 'there'}! 👋\n\nI'm your AI Business Intelligence assistant. I can help you analyze:\n\n• Sales performance and trends\n• Inventory status and alerts\n• Customer insights and churn risk\n• Revenue forecasts\n\nWhat would you like to know?`,
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       source: 'local',
     },
@@ -326,21 +326,6 @@ export default function Chatbot() {
             </div>
           </Card>
 
-          <Card
-            title="About This Chatbot"
-            size="small"
-            style={{ borderRadius: 12 }}
-          >
-            <div style={{ fontSize: 12, color: '#888', lineHeight: 1.8 }}>
-              <div>🤖 Powered by pattern matching + OpenAI GPT</div>
-              <Divider style={{ margin: '8px 0' }} />
-              <div>📊 Connected to your PostgreSQL database</div>
-              <Divider style={{ margin: '8px 0' }} />
-              <div>⚡ Add OpenAI API key in .env for GPT responses</div>
-              <Divider style={{ margin: '8px 0' }} />
-              <div>🔒 Responses are role-based</div>
-            </div>
-          </Card>
         </Col>
       </Row>
 

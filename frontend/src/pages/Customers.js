@@ -6,16 +6,19 @@ import React, { useState, useEffect } from 'react';
 import {
   Card, Table, Tag, Row, Col, Statistic,
   Progress, Alert, Button, Typography,
-  Spin, Avatar, Tooltip,
+  Spin, Avatar, Modal,
+  Form, Input, Select, InputNumber,
+  Switch, message,
 } from 'antd';
 import {
-  ReloadOutlined, UserOutlined,
-  WarningOutlined, RiseOutlined,
+  ReloadOutlined,
+  WarningOutlined,
+  PlusOutlined, EditOutlined,
 } from '@ant-design/icons';
 import {
   PieChart, Pie, Cell, Tooltip as RechartTooltip,
   ResponsiveContainer, BarChart, Bar,
-  XAxis, YAxis, CartesianGrid, Legend,
+  XAxis, YAxis, CartesianGrid,
 } from 'recharts';
 import axios from '../api/axios';
 
@@ -23,30 +26,34 @@ const { Text } = Typography;
 const COLORS = ['#1677ff', '#52c41a', '#faad14', '#f5222d', '#722ed1'];
 
 export default function Customers() {
+  const [form] = Form.useForm();
   const [summary, setSummary]     = useState(null);
   const [segments, setSegments]   = useState([]);
   const [churn, setChurn]         = useState([]);
-  const [byRegion, setByRegion]   = useState([]);
   const [acquisition, setAcquisition] = useState([]);
+  const [records, setRecords]     = useState([]);
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [saving, setSaving]       = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState(null);
 
   const fetchData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const [sum, seg, ch, reg, acq] = await Promise.all([
+      const [sum, seg, ch, acq, rec] = await Promise.all([
         axios.get('/api/v1/customers/summary'),
         axios.get('/api/v1/customers/segments'),
         axios.get('/api/v1/customers/churn-risk'),
-        axios.get('/api/v1/customers/by-region'),
         axios.get('/api/v1/customers/acquisition'),
+        axios.get('/api/v1/customers/records'),
       ]);
       setSummary(sum.data);
       setSegments(seg.data);
       setChurn(ch.data);
-      setByRegion(reg.data);
       setAcquisition(acq.data);
+      setRecords(rec.data);
     } catch (e) {
       setError('Failed to load customer data.');
     } finally {
@@ -55,6 +62,74 @@ export default function Customers() {
   };
 
   useEffect(() => { fetchData(); }, []);
+
+  const openAddModal = () => {
+    setEditingCustomer(null);
+    form.setFieldsValue({
+      name: '',
+      email: '',
+      phone: '',
+      country: '',
+      region: '',
+      segment: 'individual',
+      lifetime_value: 0,
+      churn_risk_score: 0,
+      acquisition_channel: '',
+      is_active: true,
+    });
+    setModalOpen(true);
+  };
+
+  const openEditModal = (customer) => {
+    setEditingCustomer(customer);
+    form.setFieldsValue({
+      name: customer.name || '',
+      email: customer.email || '',
+      phone: customer.phone || '',
+      country: customer.country || '',
+      region: customer.region || '',
+      segment: customer.segment || 'individual',
+      lifetime_value: Number(customer.lifetime_value || 0),
+      churn_risk_score: Number(customer.churn_risk_score || 0),
+      acquisition_channel: customer.acquisition_channel || '',
+      is_active: Boolean(customer.is_active),
+    });
+    setModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setModalOpen(false);
+    setEditingCustomer(null);
+    form.resetFields();
+  };
+
+  const handleSaveCustomer = async () => {
+    try {
+      const values = await form.validateFields();
+      setSaving(true);
+
+      if (editingCustomer?.id) {
+        await axios.put(`/api/v1/customers/records/${editingCustomer.id}`, values);
+        message.success('Customer updated successfully.');
+      } else {
+        await axios.post('/api/v1/customers/records', values);
+        message.success('Customer added successfully.');
+      }
+
+      closeModal();
+      fetchData();
+    } catch (e) {
+      if (e?.response?.data?.detail) {
+        message.error(e.response.data.detail);
+      } else if (e?.errorFields) {
+        // Form validation error handled inline.
+      } else {
+        message.error('Failed to save customer.');
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const churnColumns = [
     {
@@ -126,6 +201,63 @@ export default function Customers() {
     },
   ];
 
+  const customerColumns = [
+    {
+      title: 'Name',
+      dataIndex: 'name',
+      key: 'name',
+      render: (name, r) => (
+        <div>
+          <Text strong>{name}</Text>
+          <br />
+          <Text type="secondary" style={{ fontSize: 12 }}>{r.email}</Text>
+        </div>
+      ),
+    },
+    {
+      title: 'Segment',
+      dataIndex: 'segment',
+      key: 'segment',
+      render: s => <Tag color="blue">{(s || 'individual').toUpperCase()}</Tag>,
+    },
+    {
+      title: 'Region',
+      dataIndex: 'region',
+      key: 'region',
+      render: r => r || '-',
+    },
+    {
+      title: 'LTV',
+      dataIndex: 'lifetime_value',
+      key: 'lifetime_value',
+      render: v => `NPR ${Number(v || 0).toLocaleString()}`,
+      sorter: (a, b) => Number(a.lifetime_value || 0) - Number(b.lifetime_value || 0),
+    },
+    {
+      title: 'Status',
+      dataIndex: 'is_active',
+      key: 'is_active',
+      render: active => (
+        <Tag color={active ? 'green' : 'red'}>
+          {active ? 'ACTIVE' : 'INACTIVE'}
+        </Tag>
+      ),
+    },
+    {
+      title: 'Action',
+      key: 'action',
+      render: (_, r) => (
+        <Button
+          size="small"
+          icon={<EditOutlined />}
+          onClick={() => openEditModal(r)}
+        >
+          Edit
+        </Button>
+      ),
+    },
+  ];
+
   return (
     <div>
       <div style={{
@@ -138,13 +270,22 @@ export default function Customers() {
             Customer insights and churn analysis
           </Text>
         </div>
-        <Button
-          icon={<ReloadOutlined />}
-          onClick={fetchData}
-          loading={loading}
-        >
-          Refresh
-        </Button>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={openAddModal}
+          >
+            Add Customer
+          </Button>
+          <Button
+            icon={<ReloadOutlined />}
+            onClick={fetchData}
+            loading={loading}
+          >
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {error && (
@@ -294,6 +435,125 @@ export default function Customers() {
           size="middle"
         />
       </Card>
+
+      <Card
+        title="Customer Directory"
+        style={{ borderRadius: 12, marginTop: 16 }}
+        extra={<Tag color="blue">{records.length} total</Tag>}
+      >
+        <Table
+          dataSource={records}
+          columns={customerColumns}
+          rowKey="id"
+          loading={loading}
+          pagination={{ pageSize: 8 }}
+          size="middle"
+        />
+      </Card>
+
+      <Modal
+        title={editingCustomer ? 'Edit Customer' : 'Add Customer'}
+        open={modalOpen}
+        onOk={handleSaveCustomer}
+        onCancel={closeModal}
+        confirmLoading={saving}
+        okText={editingCustomer ? 'Update' : 'Create'}
+        width={760}
+      >
+        <Form form={form} layout="vertical">
+          <Row gutter={12}>
+            <Col xs={24} md={12}>
+              <Form.Item
+                name="name"
+                label="Name"
+                rules={[{ required: true, message: 'Name is required' }]}
+              >
+                <Input placeholder="Customer name" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item
+                name="email"
+                label="Email"
+                rules={[
+                  { required: true, message: 'Email is required' },
+                  { type: 'email', message: 'Enter a valid email' },
+                  {
+                    pattern: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+                    message: 'Enter a correct email format',
+                  },
+                ]}
+              >
+                <Input placeholder="name@example.com" />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={12}>
+            <Col xs={24} md={12}>
+              <Form.Item
+                name="phone"
+                label="Phone"
+                rules={[
+                  { required: true, message: 'Phone number is required' },
+                  {
+                    pattern: /^\d{10}$/,
+                    message: 'Phone number must be exactly 10 digits',
+                  },
+                ]}
+              >
+                <Input placeholder="10-digit phone number" maxLength={10} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item name="country" label="Country">
+                <Input placeholder="Country" />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={12}>
+            <Col xs={24} md={12}>
+              <Form.Item name="region" label="Region">
+                <Input placeholder="Region" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item name="segment" label="Segment">
+                <Select
+                  options={[
+                    { label: 'Individual', value: 'individual' },
+                    { label: 'SMB', value: 'smb' },
+                    { label: 'Enterprise', value: 'enterprise' },
+                  ]}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={12}>
+            <Col xs={24} md={12}>
+              <Form.Item name="acquisition_channel" label="Acquisition Channel">
+                <Input placeholder="Web, Referral, Ads..." />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={6}>
+              <Form.Item name="lifetime_value" label="Lifetime Value">
+                <InputNumber min={0} precision={2} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={6}>
+              <Form.Item name="churn_risk_score" label="Churn Risk (0-1)">
+                <InputNumber min={0} max={1} step={0.01} precision={3} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Form.Item name="is_active" label="Active" valuePropName="checked">
+            <Switch checkedChildren="Active" unCheckedChildren="Inactive" />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 }

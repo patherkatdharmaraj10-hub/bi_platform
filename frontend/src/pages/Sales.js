@@ -2,11 +2,11 @@
 // FILE: C:\bi-platform\frontend\src\pages\Sales.js
 // Phase 9 — Sales Analytics
 // =============================================================================
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Row, Col, Card, Statistic, Table, Tag,
   Select, Button, Spin, Alert, Typography,
-  Modal, Form, Input, InputNumber, message,
+  Modal, Form, InputNumber, message,
 } from 'antd';
 import {
   ReloadOutlined,
@@ -43,7 +43,7 @@ export default function Sales() {
   const [error, setError]         = useState(null);
   const [form] = Form.useForm();
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     setRecordLoading(true);
     setError(null);
@@ -72,9 +72,9 @@ export default function Sales() {
       setLoading(false);
       setRecordLoading(false);
     }
-  };
+  }, [period]);
 
-  useEffect(() => { fetchData(); }, [period]);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   const openCreate = () => {
     setEditingSale(null);

@@ -8,14 +8,14 @@ import {
 } from 'antd';
 import {
   ArrowUpOutlined, ArrowDownOutlined,
-  ShoppingCartOutlined, TeamOutlined,
+  ShoppingCartOutlined,
   DollarOutlined, AlertOutlined,
   ReloadOutlined, RiseOutlined,
 } from '@ant-design/icons';
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid,
+  XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, AreaChart, Area,
-  BarChart, Bar, Legend,
+  BarChart, Bar,
 } from 'recharts';
 import axios from '../api/axios';
 
@@ -99,9 +99,6 @@ export default function Dashboard() {
   };
 
   useEffect(() => { fetchAll(); }, []);
-
-  const formatCurrency = (v) =>
-    `NPR ${Number(v || 0).toLocaleString()}`;
 
   const productColumns = [
     {
@@ -191,7 +188,7 @@ export default function Dashboard() {
           <KPICard
             title="Total Orders"
             value={kpis?.total_orders?.toLocaleString()}
-            trend={8.2}
+            trend={kpis?.orders_growth}
             icon={<ShoppingCartOutlined />}
             color="#52c41a"
             loading={loading}
@@ -202,7 +199,7 @@ export default function Dashboard() {
             title="Avg Order Value"
             value={kpis?.avg_order_value?.toLocaleString()}
             prefix="NPR"
-            trend={3.8}
+            trend={kpis?.avg_order_growth}
             icon={<RiseOutlined />}
             color="#faad14"
             loading={loading}

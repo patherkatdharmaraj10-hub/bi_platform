@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { ConfigProvider, Result, Button } from 'antd';
 import MainLayout from './layouts/MainLayout';
@@ -7,10 +7,8 @@ import Sales from './pages/Sales';
 import Inventory from './pages/Inventory';
 import Customers from './pages/Customers';
 import Forecast from './pages/Forecast';
-import Anomaly from './pages/Anomaly';
 import Chatbot from './pages/Chatbot';
 import Login from './pages/Login';
-import ForgotPassword from './pages/ForgotPassword';
 import Settings from './pages/Settings';
 import { useAuthStore } from './store/authStore';
 
@@ -34,7 +32,11 @@ function RoleGuard({ children, allowedRoles }) {
 }
 
 function App() {
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, normalizeCurrentUserRole } = useAuthStore();
+
+  useEffect(() => {
+    normalizeCurrentUserRole();
+  }, [normalizeCurrentUserRole]);
 
   return (
     <ConfigProvider
@@ -47,7 +49,6 @@ function App() {
     >
       <Routes>
         <Route path="/login" element={<Login />} />
-        <Route path="/forgot-password" element={<ForgotPassword />} />
 
         {isAuthenticated ? (
           <Route element={<MainLayout />}>
@@ -59,23 +60,17 @@ function App() {
             <Route path="/inventory" element={<Inventory />} />
             <Route path="/chatbot"   element={<Chatbot />} />
 
-            {/* Admin + Analyst only */}
+            {/* Admin + User (analysis access) */}
             <Route path="/customers" element={
-              <RoleGuard allowedRoles={['admin', 'analyst']}>
+              <RoleGuard allowedRoles={['admin', 'user']}>
                 <Customers />
               </RoleGuard>
             } />
             <Route path="/forecast" element={
-              <RoleGuard allowedRoles={['admin', 'analyst']}>
+              <RoleGuard allowedRoles={['admin', 'user']}>
                 <Forecast />
               </RoleGuard>
             } />
-            <Route path="/anomaly" element={
-              <RoleGuard allowedRoles={['admin', 'analyst']}>
-                <Anomaly />
-              </RoleGuard>
-            } />
-
             {/* Admin only */}
             <Route path="/settings" element={
               <RoleGuard allowedRoles={['admin']}>

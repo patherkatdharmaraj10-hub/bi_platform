@@ -1,10 +1,11 @@
 from datetime import datetime
 from typing import Dict, List
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel, EmailStr
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
@@ -25,24 +26,18 @@ class InitRequest(BaseModel):
 class UserCreateRequest(BaseModel):
     email: EmailStr
     full_name: str
-    role: UserRole = UserRole.viewer
-    is_premium: bool = False
+    role: Literal["admin", "user"] = "user"
     password: str = "changeme123"
 
 
 class UserUpdateRequest(BaseModel):
     email: EmailStr
     full_name: str
-    role: UserRole
-    is_premium: bool
+    role: Literal["admin", "user"]
 
 
 class ToggleActiveRequest(BaseModel):
     is_active: bool
-
-
-class TogglePremiumRequest(BaseModel):
-    is_premium: bool
 
 
 class PasswordChangeRequest(BaseModel):
@@ -63,24 +58,31 @@ class SystemConfigRequest(BaseModel):
 
 
 PERMISSIONS: List[Dict[str, object]] = [
-    {"feature": "View Dashboard", "admin": True, "analyst": True, "viewer": True},
-    {"feature": "View Sales Analytics", "admin": True, "analyst": True, "viewer": True},
-    {"feature": "View Inventory", "admin": True, "analyst": True, "viewer": True},
-    {"feature": "View Customers", "admin": True, "analyst": True, "viewer": False},
-    {"feature": "ML Forecasting", "admin": True, "analyst": True, "viewer": False},
-    {"feature": "Anomaly Detection", "admin": True, "analyst": True, "viewer": False},
-    {"feature": "AI Chatbot", "admin": True, "analyst": True, "viewer": True},
-    {"feature": "Export CSV / PDF", "admin": True, "analyst": True, "viewer": False},
-    {"feature": "Create Reports", "admin": True, "analyst": True, "viewer": False},
-    {"feature": "Manage Users", "admin": True, "analyst": False, "viewer": False},
-    {"feature": "System Settings", "admin": True, "analyst": False, "viewer": False},
-    {"feature": "View Audit Logs", "admin": True, "analyst": False, "viewer": False},
-    {"feature": "API Access", "admin": True, "analyst": True, "viewer": False},
-    {"feature": "Premium Features", "admin": True, "analyst": False, "viewer": False},
+    {"feature": "View Dashboard", "admin": True, "user": True},
+    {"feature": "View Sales Analytics", "admin": True, "user": True},
+    {"feature": "View Inventory", "admin": True, "user": True},
+    {"feature": "View Customers", "admin": True, "user": True},
+    {"feature": "ML Forecasting", "admin": True, "user": True},
+    {"feature": "AI Chatbot", "admin": True, "user": True},
+    {"feature": "Export CSV / PDF", "admin": True, "user": True},
+    {"feature": "Create Reports", "admin": True, "user": True},
+    {"feature": "Manage Users", "admin": True, "user": False},
+    {"feature": "System Settings", "admin": True, "user": False},
+    {"feature": "View Audit Logs", "admin": True, "user": False},
+    {"feature": "API Access", "admin": True, "user": True},
 ]
 
 
-SYSTEM_CONFIG: Dict[str, object] = {
+def _normalize_role(role: UserRole | str) -> str:
+    value = role.value if hasattr(role, "value") else str(role)
+    return "admin" if value == "admin" else "user"
+
+
+def _to_storage_role(role: Literal["admin", "user"]) -> UserRole:
+    return UserRole.admin if role == "admin" else UserRole.analyst
+
+
+DEFAULT_SYSTEM_CONFIG: Dict[str, object] = {
     "siteName": "BI Platform",
     "maxLoginAttempts": "5",
     "sessionTimeout": "60",
@@ -92,6 +94,84 @@ SYSTEM_CONFIG: Dict[str, object] = {
     "enableChatbot": True,
     "enableForecasting": True,
 }
+
+
+def _system_bool_keys() -> set[str]:
+    return {
+        "enableNotifications",
+        "enableAuditLog",
+        "enableTwoFactor",
+        "enableChatbot",
+        "enableForecasting",
+    }
+
+
+async def _ensure_system_config_table(db: AsyncSession) -> None:
+    await db.execute(text("""
+        CREATE TABLE IF NOT EXISTS system_config (
+            config_key VARCHAR(100) PRIMARY KEY,
+            config_value TEXT NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+
+
+def _parse_stored_config(raw: Dict[str, str]) -> Dict[str, object]:
+    merged = dict(DEFAULT_SYSTEM_CONFIG)
+    bool_keys = _system_bool_keys()
+
+    for key, value in raw.items():
+        if key in bool_keys:
+            merged[key] = str(value).lower() in {"true", "1", "yes", "on"}
+        else:
+            merged[key] = str(value)
+
+    return merged
+
+
+async def _load_system_config(db: AsyncSession) -> Dict[str, object]:
+    await _ensure_system_config_table(db)
+    result = await db.execute(text("""
+        SELECT config_key, config_value
+        FROM system_config
+    """))
+    rows = result.fetchall()
+
+    if not rows:
+        # Seed defaults once so subsequent reads are fully DB-driven.
+        for key, value in DEFAULT_SYSTEM_CONFIG.items():
+            await db.execute(text("""
+                INSERT INTO system_config (config_key, config_value, updated_at)
+                VALUES (:key, :value, NOW())
+                ON CONFLICT (config_key)
+                DO UPDATE SET config_value = EXCLUDED.config_value, updated_at = NOW()
+            """), {
+                "key": key,
+                "value": str(value).lower() if isinstance(value, bool) else str(value),
+            })
+        return dict(DEFAULT_SYSTEM_CONFIG)
+
+    stored = {str(r.config_key): str(r.config_value) for r in rows}
+    return _parse_stored_config(stored)
+
+
+async def _save_system_config(db: AsyncSession, payload: Dict[str, object]) -> Dict[str, object]:
+    await _ensure_system_config_table(db)
+    bool_keys = _system_bool_keys()
+
+    for key, value in payload.items():
+        stored_value = str(value).lower() if key in bool_keys else str(value)
+        await db.execute(text("""
+            INSERT INTO system_config (config_key, config_value, updated_at)
+            VALUES (:key, :value, NOW())
+            ON CONFLICT (config_key)
+            DO UPDATE SET config_value = EXCLUDED.config_value, updated_at = NOW()
+        """), {
+            "key": key,
+            "value": stored_value,
+        })
+
+    return await _load_system_config(db)
 
 
 async def get_admin_user(
@@ -116,14 +196,13 @@ async def get_admin_user(
 def _serialize_user(user: User) -> Dict[str, object]:
     created = user.created_at.date().isoformat() if user.created_at else None
     last_login = user.updated_at.isoformat() if user.updated_at else "Never"
-    role_value = user.role.value if hasattr(user.role, "value") else str(user.role)
+    role_value = _normalize_role(user.role)
     return {
         "id": user.id,
         "email": user.email,
         "full_name": user.full_name,
         "role": role_value,
         "is_active": bool(user.is_active),
-        "is_premium": bool(user.is_premium),
         "last_login": last_login,
         "created": created,
     }
@@ -166,9 +245,8 @@ async def create_user(
         email=payload.email,
         full_name=payload.full_name,
         hashed_password=hash_password(payload.password),
-        role=payload.role,
+        role=_to_storage_role(payload.role),
         is_active=True,
-        is_premium=payload.is_premium,
     )
     db.add(user)
     await db.flush()
@@ -193,8 +271,7 @@ async def update_user(
 
     user.email = payload.email
     user.full_name = payload.full_name
-    user.role = payload.role
-    user.is_premium = payload.is_premium
+    user.role = _to_storage_role(payload.role)
     user.updated_at = datetime.utcnow()
     await db.flush()
     return _serialize_user(user)
@@ -216,24 +293,6 @@ async def set_user_active(
         raise HTTPException(status_code=404, detail="User not found")
 
     user.is_active = payload.is_active
-    user.updated_at = datetime.utcnow()
-    await db.flush()
-    return _serialize_user(user)
-
-
-@router.patch("/users/{user_id}/premium")
-async def set_user_premium(
-    user_id: int,
-    payload: TogglePremiumRequest,
-    _: User = Depends(get_admin_user),
-    db: AsyncSession = Depends(get_db),
-):
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    user.is_premium = payload.is_premium
     user.updated_at = datetime.utcnow()
     await db.flush()
     return _serialize_user(user)
@@ -284,14 +343,17 @@ async def get_permissions(_: User = Depends(get_admin_user)):
 
 
 @router.get("/config")
-async def get_system_config(_: User = Depends(get_admin_user)):
-    return SYSTEM_CONFIG
+async def get_system_config(
+    _: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _load_system_config(db)
 
 
 @router.put("/config")
 async def update_system_config(
     payload: SystemConfigRequest,
     _: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
 ):
-    SYSTEM_CONFIG.update(payload.model_dump())
-    return SYSTEM_CONFIG
+    return await _save_system_config(db, payload.model_dump())

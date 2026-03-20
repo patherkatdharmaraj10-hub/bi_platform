@@ -3,12 +3,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from contextlib import asynccontextmanager
 from core.database import engine, Base
+from core.db_bootstrap import seed_default_users
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    # Ensure first-run environments always have baseline login accounts.
+    await seed_default_users()
     yield
     await engine.dispose()
 
@@ -29,7 +32,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from api.v1 import auth, sales, inventory, customers, forecast, anomaly, chatbot, dashboard, system
+from api.v1 import auth, sales, inventory, customers, forecast, chatbot, dashboard, system
 
 app.include_router(auth.router,      prefix="/api/v1/auth",      tags=["Auth"])
 app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["Dashboard"])
@@ -37,7 +40,6 @@ app.include_router(sales.router,     prefix="/api/v1/sales",     tags=["Sales"])
 app.include_router(inventory.router, prefix="/api/v1/inventory", tags=["Inventory"])
 app.include_router(customers.router, prefix="/api/v1/customers", tags=["Customers"])
 app.include_router(forecast.router,  prefix="/api/v1/forecast",  tags=["Forecast"])
-app.include_router(anomaly.router,   prefix="/api/v1/anomaly",   tags=["Anomaly"])
 app.include_router(chatbot.router,   prefix="/api/v1/chatbot",   tags=["Chatbot"])
 app.include_router(system.router,    prefix="/api/v1/system",    tags=["System"])
 

@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import axios from '../api/axios';
 
+const normalizeRole = (role) => (role === 'admin' ? 'admin' : 'user');
+
 export const useAuthStore = create(
   persist(
     (set, get) => ({
@@ -21,10 +23,11 @@ export const useAuthStore = create(
   });
   
   const { access_token, user_id, role, full_name } = res.data;
+  const normalizedRole = normalizeRole(role);
   axios.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;
   set({
     token: access_token,
-    user: { id: user_id, email, role, full_name },
+    user: { id: user_id, email, role: normalizedRole, full_name },
     isAuthenticated: true,
   });
   return res.data;
@@ -37,8 +40,16 @@ export const useAuthStore = create(
 
       // Role checkers
       isAdmin:   () => get().user?.role === 'admin',
-      isAnalyst: () => ['admin', 'analyst'].includes(get().user?.role),
-      isViewer:  () => ['admin', 'analyst', 'viewer'].includes(get().user?.role),
+      isUser:    () => ['admin', 'user'].includes(normalizeRole(get().user?.role)),
+
+      normalizeCurrentUserRole: () => {
+        const current = get().user;
+        if (!current) return;
+        const normalizedRole = normalizeRole(current.role);
+        if (current.role !== normalizedRole) {
+          set({ user: { ...current, role: normalizedRole } });
+        }
+      },
     }),
     { name: 'bi-auth' }
   )

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   Card, Table, Tag, Button, Modal, Form,
   Input, Select, Switch, Row, Col, Statistic,
@@ -6,32 +6,29 @@ import {
   Progress, Alert, Tooltip, Popconfirm,
 } from 'antd';
 import {
-  UserAddOutlined, CrownOutlined, BarChartOutlined,
+  UserAddOutlined, CrownOutlined,
   UserOutlined, TeamOutlined, SettingOutlined,
   SecurityScanOutlined, BellOutlined, DatabaseOutlined,
   KeyOutlined, EditOutlined, DeleteOutlined,
   CheckCircleOutlined, CloseCircleOutlined,
-  StarOutlined, ReloadOutlined, SaveOutlined,
+  ReloadOutlined, SaveOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '../store/authStore';
 import axios from '../api/axios';
 
 const ROLE_COLOR = {
   admin: 'red',
-  analyst: 'blue',
-  viewer: 'green',
+  user: 'blue',
 };
 
 const ROLE_ICON = {
   admin: <CrownOutlined />,
-  analyst: <BarChartOutlined />,
-  viewer: <UserOutlined />,
+  user: <UserOutlined />,
 };
 
 const ROLE_BG = {
   admin: { bg: '#fff1f0', border: '#ffa39e', text: '#cf1322' },
-  analyst: { bg: '#e6f4ff', border: '#91caff', text: '#1677ff' },
-  viewer: { bg: '#f6ffed', border: '#b7eb8f', text: '#389e0d' },
+  user: { bg: '#e6f4ff', border: '#91caff', text: '#1677ff' },
 };
 
 function RoleTag({ role }) {
@@ -43,7 +40,7 @@ function RoleTag({ role }) {
 }
 
 function UserAvatar({ name, role, size = 36 }) {
-  const colors = ROLE_BG[role] || ROLE_BG.viewer;
+  const colors = ROLE_BG[role] || ROLE_BG.user;
   return (
     <Avatar
       size={size}
@@ -117,7 +114,7 @@ export default function Settings() {
     }
   };
 
-  const fetchSystemConfig = async () => {
+  const fetchSystemConfig = useCallback(async () => {
     setSystemBusy(true);
     try {
       const res = await axios.get('/api/v1/system/config');
@@ -129,7 +126,7 @@ export default function Settings() {
     } finally {
       setSystemBusy(false);
     }
-  };
+  }, [systemForm]);
 
   const fetchDbStatus = async () => {
     setDbBusy(true);
@@ -147,7 +144,7 @@ export default function Settings() {
     fetchUsers();
     fetchPermissions();
     fetchSystemConfig();
-  }, []);
+  }, [fetchSystemConfig]);
 
   useEffect(() => {
     if (activeTab === 'database') {
@@ -161,7 +158,6 @@ export default function Settings() {
         full_name: values.full_name,
         email: values.email,
         role: values.role,
-        is_premium: !!values.is_premium,
       });
       message.success(`User ${values.full_name} added successfully`);
       setAddModalOpen(false);
@@ -178,7 +174,6 @@ export default function Settings() {
         full_name: values.full_name,
         email: values.email,
         role: values.role,
-        is_premium: !!values.is_premium,
       });
       message.success('User updated successfully');
       setEditModalOpen(false);
@@ -215,18 +210,6 @@ export default function Settings() {
       await fetchUsers();
     } catch (err) {
       message.error(err.response?.data?.detail || 'Failed to update active status');
-    }
-  };
-
-  const handleTogglePremium = async (record) => {
-    try {
-      await axios.patch(`/api/v1/system/users/${record.id}/premium`, {
-        is_premium: !record.is_premium,
-      });
-      message.success(`Premium ${record.is_premium ? 'removed' : 'granted'} for ${record.full_name}`);
-      await fetchUsers();
-    } catch (err) {
-      message.error(err.response?.data?.detail || 'Failed to update premium status');
     }
   };
 
@@ -284,7 +267,6 @@ export default function Settings() {
       full_name: record.full_name,
       email: record.email,
       role: record.role,
-      is_premium: record.is_premium,
     });
     setEditModalOpen(true);
   };
@@ -323,8 +305,7 @@ export default function Settings() {
       render: role => <RoleTag role={role} />,
       filters: [
         { text: 'Admin', value: 'admin' },
-        { text: 'Analyst', value: 'analyst' },
-        { text: 'Viewer', value: 'viewer' },
+        { text: 'User', value: 'user' },
       ],
       onFilter: (value, record) => record.role === value,
     },
@@ -339,9 +320,6 @@ export default function Settings() {
           >
             {record.is_active ? 'Active' : 'Inactive'}
           </Tag>
-          {record.is_premium && (
-            <Tag color='gold' icon={<StarOutlined />}>Premium</Tag>
-          )}
         </div>
       ),
     },
@@ -374,15 +352,6 @@ export default function Settings() {
               disabled={record.email === user?.email}
             >
               {record.is_active ? 'Deactivate' : 'Activate'}
-            </Button>
-          </Tooltip>
-          <Tooltip title={record.is_premium ? 'Remove Premium' : 'Grant Premium'}>
-            <Button
-              size='small'
-              style={{ color: '#d48806', borderColor: '#d48806' }}
-              onClick={() => handleTogglePremium(record)}
-            >
-              {record.is_premium ? '? Remove' : '? Grant'}
             </Button>
           </Tooltip>
           <Popconfirm
@@ -421,16 +390,9 @@ export default function Settings() {
       render: v => (v ? <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 18 }} /> : <CloseCircleOutlined style={{ color: '#ff4d4f', fontSize: 18 }} />),
     },
     {
-      title: () => <Tag color='blue' icon={<BarChartOutlined />}>ANALYST</Tag>,
-      dataIndex: 'analyst',
-      key: 'analyst',
-      align: 'center',
-      render: v => (v ? <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 18 }} /> : <CloseCircleOutlined style={{ color: '#ff4d4f', fontSize: 18 }} />),
-    },
-    {
-      title: () => <Tag color='green' icon={<UserOutlined />}>VIEWER</Tag>,
-      dataIndex: 'viewer',
-      key: 'viewer',
+      title: () => <Tag color='blue' icon={<UserOutlined />}>USER</Tag>,
+      dataIndex: 'user',
+      key: 'user',
       align: 'center',
       render: v => (v ? <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 18 }} /> : <CloseCircleOutlined style={{ color: '#ff4d4f', fontSize: 18 }} />),
     },
@@ -453,22 +415,17 @@ export default function Settings() {
       </div>
 
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={12} sm={6}>
+        <Col xs={24} sm={8}>
           <Card style={{ borderRadius: 12, background: '#fff1f0', border: '1px solid #ffa39e' }}>
             <Statistic title='Total Users' value={users.length} prefix={<TeamOutlined style={{ color: '#cf1322' }} />} valueStyle={{ color: '#cf1322' }} />
           </Card>
         </Col>
-        <Col xs={12} sm={6}>
+        <Col xs={24} sm={8}>
           <Card style={{ borderRadius: 12, background: '#f6ffed', border: '1px solid #b7eb8f' }}>
             <Statistic title='Active Users' value={users.filter(u => u.is_active).length} prefix={<CheckCircleOutlined style={{ color: '#389e0d' }} />} valueStyle={{ color: '#389e0d' }} />
           </Card>
         </Col>
-        <Col xs={12} sm={6}>
-          <Card style={{ borderRadius: 12, background: '#fffbe6', border: '1px solid #ffe58f' }}>
-            <Statistic title='Premium Users' value={users.filter(u => u.is_premium).length} prefix='?' valueStyle={{ color: '#d48806' }} />
-          </Card>
-        </Col>
-        <Col xs={12} sm={6}>
+        <Col xs={24} sm={8}>
           <Card style={{ borderRadius: 12, background: '#e6f4ff', border: '1px solid #91caff' }}>
             <Statistic title='Admins' value={users.filter(u => u.role === 'admin').length} prefix={<CrownOutlined style={{ color: '#1677ff' }} />} valueStyle={{ color: '#1677ff' }} />
           </Card>
@@ -510,7 +467,7 @@ export default function Settings() {
                   <Alert message='Role-based access control from backend API' type='info' showIcon style={{ marginBottom: 16 }} />
 
                   <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-                    {['admin', 'analyst', 'viewer'].map(role => {
+                    {['admin', 'user'].map(role => {
                       const count = permissionsSource.filter(p => p[role]).length;
                       const total = permissionsSource.length || 1;
                       const pct = Math.round((count / total) * 100);
@@ -598,7 +555,7 @@ export default function Settings() {
                   />
 
                   <Button type='primary' onClick={initializeDatabase} loading={dbBusy} style={{ marginBottom: 16 }}>
-                    Initialize / Repair Database
+                    Initialize Database
                   </Button>
 
                   <Row gutter={[16, 16]}>
@@ -632,15 +589,11 @@ export default function Settings() {
           <Form.Item name='email' label='Email Address' rules={[{ required: true, message: 'Please enter email' }, { type: 'email', message: 'Enter valid email' }]}>
             <Input prefix='@' placeholder='user@example.com' />
           </Form.Item>
-          <Form.Item name='role' label='Role' rules={[{ required: true }]} initialValue='viewer'>
+          <Form.Item name='role' label='Role' rules={[{ required: true }]} initialValue='user'>
             <Select>
               <Select.Option value='admin'><Tag color='red' icon={<CrownOutlined />}>Admin</Tag> - Full access</Select.Option>
-              <Select.Option value='analyst'><Tag color='blue' icon={<BarChartOutlined />}>Analyst</Tag> - Analytics access</Select.Option>
-              <Select.Option value='viewer'><Tag color='green' icon={<UserOutlined />}>Viewer</Tag> - View only</Select.Option>
+              <Select.Option value='user'><Tag color='blue' icon={<UserOutlined />}>User</Tag> - Analytics access</Select.Option>
             </Select>
-          </Form.Item>
-          <Form.Item name='is_premium' label='Premium Access' valuePropName='checked'>
-            <Switch checkedChildren='? Premium' unCheckedChildren='Free' />
           </Form.Item>
           <Divider />
           <Form.Item><Button type='primary' htmlType='submit' block size='large'>Add User</Button></Form.Item>
@@ -660,12 +613,8 @@ export default function Settings() {
           <Form.Item name='role' label='Role' rules={[{ required: true }]}>
             <Select>
               <Select.Option value='admin'><Tag color='red' icon={<CrownOutlined />}>Admin</Tag></Select.Option>
-              <Select.Option value='analyst'><Tag color='blue' icon={<BarChartOutlined />}>Analyst</Tag></Select.Option>
-              <Select.Option value='viewer'><Tag color='green' icon={<UserOutlined />}>Viewer</Tag></Select.Option>
+              <Select.Option value='user'><Tag color='blue' icon={<UserOutlined />}>User</Tag></Select.Option>
             </Select>
-          </Form.Item>
-          <Form.Item name='is_premium' label='Premium' valuePropName='checked'>
-            <Switch checkedChildren='? Premium' unCheckedChildren='Free' />
           </Form.Item>
           <Button type='primary' htmlType='submit' block>Save Changes</Button>
         </Form>

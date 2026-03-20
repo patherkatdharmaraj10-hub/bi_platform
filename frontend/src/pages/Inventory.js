@@ -30,7 +30,6 @@ export default function Inventory() {
   const [data, setData]       = useState([]);
   const [records, setRecords] = useState([]);
   const [products, setProducts] = useState([]);
-  const [warehouses, setWarehouses] = useState([]);
   const [summary, setSummary] = useState(null);
   const [alerts, setAlerts]   = useState([]);
   const [loading, setLoading] = useState(true);
@@ -51,20 +50,18 @@ export default function Inventory() {
     setRecordLoading(true);
     setError(null);
     try {
-      const [inv, sum, alt, rec, prod, wh] = await Promise.all([
+      const [inv, sum, alt, rec, prod] = await Promise.all([
         axios.get('/api/v1/inventory/status'),
         axios.get('/api/v1/inventory/summary'),
         axios.get('/api/v1/inventory/alerts'),
         axios.get('/api/v1/inventory/records?limit=300'),
         axios.get('/api/v1/inventory/products'),
-        axios.get('/api/v1/inventory/warehouses'),
       ]);
       setData(inv.data);
       setSummary(sum.data);
       setAlerts(alt.data.alerts || []);
       setRecords(rec.data);
       setProducts(prod.data);
-      setWarehouses(wh.data || []);
     } catch (e) {
       setError('Failed to load inventory data.');
     } finally {

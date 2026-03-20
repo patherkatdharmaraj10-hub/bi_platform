@@ -3,9 +3,9 @@ import { Layout, Menu, Avatar, Typography, Tag, Dropdown } from 'antd';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   DashboardOutlined, ShoppingCartOutlined, InboxOutlined,
-  TeamOutlined, LineChartOutlined, AlertOutlined,
+  TeamOutlined, LineChartOutlined,
   RobotOutlined, LogoutOutlined, SettingOutlined,
-  UserOutlined, CrownOutlined, BarChartOutlined,
+  UserOutlined, CrownOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '../store/authStore';
 
@@ -14,14 +14,12 @@ const { Text } = Typography;
 
 const ROLE_COLOR = {
   admin:   '#f5222d',
-  analyst: '#1677ff',
-  viewer:  '#52c41a',
+  user:    '#1677ff',
 };
 
 const ROLE_ICON = {
   admin:   <CrownOutlined />,
-  analyst: <BarChartOutlined />,
-  viewer:  <UserOutlined />,
+  user:    <UserOutlined />,
 };
 
 const ALL_MENU_ITEMS = [
@@ -29,43 +27,37 @@ const ALL_MENU_ITEMS = [
     key: '/dashboard',
     icon: <DashboardOutlined />,
     label: 'Dashboard',
-    roles: ['admin', 'analyst', 'viewer'],
+    roles: ['admin', 'user'],
   },
   {
     key: '/sales',
     icon: <ShoppingCartOutlined />,
     label: 'Sales',
-    roles: ['admin', 'analyst', 'viewer'],
+    roles: ['admin', 'user'],
   },
   {
     key: '/inventory',
     icon: <InboxOutlined />,
     label: 'Inventory',
-    roles: ['admin', 'analyst', 'viewer'],
+    roles: ['admin', 'user'],
   },
   {
     key: '/customers',
     icon: <TeamOutlined />,
     label: 'Customers',
-    roles: ['admin', 'analyst'],
+    roles: ['admin', 'user'],
   },
   {
     key: '/forecast',
     icon: <LineChartOutlined />,
     label: 'Forecast',
-    roles: ['admin', 'analyst'],
-  },
-  {
-    key: '/anomaly',
-    icon: <AlertOutlined />,
-    label: 'Anomaly Detection',
-    roles: ['admin', 'analyst'],
+    roles: ['admin', 'user'],
   },
   {
     key: '/chatbot',
     icon: <RobotOutlined />,
     label: 'AI Chatbot',
-    roles: ['admin', 'analyst', 'viewer'],
+    roles: ['admin', 'user'],
   },
   {
     key: '/settings',
@@ -82,7 +74,7 @@ export default function MainLayout() {
   const { user, logout } = useAuthStore();
   const siderWidth = collapsed ? 80 : 220;
 
-  const role = user?.role || 'viewer';
+  const role = user?.role || 'user';
 
   // Filter menu based on role
   const menuItems = ALL_MENU_ITEMS

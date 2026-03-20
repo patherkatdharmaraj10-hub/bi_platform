@@ -54,6 +54,7 @@ async def ensure_user_schema() -> Dict[str, str]:
 async def create_tables() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.execute(text("ALTER TABLE IF EXISTS users DROP COLUMN IF EXISTS is_premium"))
         # Keep existing environments compatible by adding profile columns if missing.
         await conn.execute(text("ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS phone_number VARCHAR"))
         await conn.execute(text("ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS job_title VARCHAR"))
@@ -68,21 +69,12 @@ async def seed_default_users() -> List[str]:
             "full_name": "Admin User",
             "password": "admin123",
             "role": UserRole.admin,
-            "is_premium": True,
         },
         {
-            "email": "analyst@bi.com",
-            "full_name": "Data Analyst",
-            "password": "analyst123",
+            "email": "user@bi.com",
+            "full_name": "Standard User",
+            "password": "user123",
             "role": UserRole.analyst,
-            "is_premium": False,
-        },
-        {
-            "email": "viewer@bi.com",
-            "full_name": "View Only",
-            "password": "viewer123",
-            "role": UserRole.viewer,
-            "is_premium": False,
         },
     ]
 
@@ -98,7 +90,6 @@ async def seed_default_users() -> List[str]:
                     full_name=item["full_name"],
                     hashed_password=hash_password(item["password"]),
                     role=item["role"],
-                    is_premium=item["is_premium"],
                 )
             )
             created.append(item["email"])

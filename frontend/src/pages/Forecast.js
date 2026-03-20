@@ -6,16 +6,15 @@ import React, { useState } from 'react';
 import {
   Card, Select, Slider, Button, Alert,
   Row, Col, Statistic, Tag, Typography,
-  Spin, Table, Tabs,
+  Spin, Table,
 } from 'antd';
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid,
+  XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, AreaChart,
-  Area, ReferenceLine, Legend,
+  Area, Legend,
 } from 'recharts';
 import {
-  RocketOutlined, ExperimentOutlined,
-  LineChartOutlined, BarChartOutlined,
+  RocketOutlined, BarChartOutlined,
 } from '@ant-design/icons';
 import axios from '../api/axios';
 
@@ -23,40 +22,23 @@ const { Text } = Typography;
 const { Option } = Select;
 
 const MODEL_INFO = {
-  prophet: {
-    name: 'Prophet',
-    color: '#1677ff',
-    icon: <LineChartOutlined />,
-    description: 'Facebook Prophet — best for data with seasonal trends',
-    badge: 'Recommended',
-    badgeColor: 'green',
-  },
   xgboost: {
     name: 'XGBoost',
     color: '#52c41a',
     icon: <BarChartOutlined />,
-    description: 'Gradient boosting with feature engineering',
+    description: 'Gradient boosting with feature engineering for revenue, demand, and sales.',
     badge: 'High Accuracy',
     badgeColor: 'blue',
-  },
-  lstm: {
-    name: 'LSTM',
-    color: '#722ed1',
-    icon: <ExperimentOutlined />,
-    description: 'Deep learning — train on Google Colab first',
-    badge: 'Deep Learning',
-    badgeColor: 'purple',
   },
 };
 
 export default function Forecast() {
-  const [metric, setMetric]   = useState('revenue');
-  const [model, setModel]     = useState('prophet');
+  const [metric, setMetric] = useState('revenue');
   const [periods, setPeriods] = useState(30);
-  const [data, setData]       = useState(null);
+  const [data, setData] = useState(null);
   const [accuracy, setAccuracy] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState(null);
+  const [error, setError] = useState(null);
 
   const runForecast = async () => {
     setLoading(true);
@@ -64,7 +46,7 @@ export default function Forecast() {
     setData(null);
     try {
       const [forecastRes, accuracyRes] = await Promise.all([
-        axios.post('/api/v1/forecast/run', { metric, model, periods }),
+        axios.post('/api/v1/forecast/run', { metric, model: 'xgboost', periods }),
         axios.get('/api/v1/forecast/accuracy'),
       ]);
       setData(forecastRes.data);
@@ -72,14 +54,14 @@ export default function Forecast() {
     } catch (e) {
       setError(
         e.response?.data?.detail ||
-        'Forecast failed. Make sure prophet and xgboost are installed.'
+        'Forecast failed. Make sure xgboost is installed.'
       );
     } finally {
       setLoading(false);
     }
   };
 
-  const modelInfo = MODEL_INFO[model];
+  const modelInfo = MODEL_INFO.xgboost;
 
   // Summary stats from predictions
   const predictions = data?.predictions || [];
@@ -123,44 +105,25 @@ export default function Forecast() {
   return (
     <div>
       <div style={{ marginBottom: 24 }}>
-        <h2 style={{ margin: 0 }}>ML Forecasting</h2>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 12,
+          flexWrap: 'wrap',
+        }}>
+          <h2 style={{ margin: 0 }}>ML Forecasting</h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Tag color={modelInfo.badgeColor}>{modelInfo.badge}</Tag>
+            <Tag icon={modelInfo.icon} color="green" style={{ margin: 0 }}>
+              {modelInfo.name}
+            </Tag>
+          </div>
+        </div>
         <Text type="secondary">
           Predict future trends using machine learning models
         </Text>
       </div>
-
-      {/* Model Selection Cards */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        {Object.entries(MODEL_INFO).map(([key, info]) => (
-          <Col xs={24} sm={8} key={key}>
-            <Card
-              style={{
-                borderRadius: 12,
-                cursor: 'pointer',
-                border: model === key
-                  ? `2px solid ${info.color}`
-                  : '1px solid #f0f0f0',
-                background: model === key ? `${info.color}08` : '#fff',
-                transition: 'all 0.2s',
-              }}
-              onClick={() => setModel(key)}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <div style={{ color: info.color, fontSize: 24 }}>
-                  {info.icon}
-                </div>
-                <Tag color={info.badgeColor}>{info.badge}</Tag>
-              </div>
-              <Text strong style={{ fontSize: 16, display: 'block', marginTop: 8 }}>
-                {info.name}
-              </Text>
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                {info.description}
-              </Text>
-            </Card>
-          </Col>
-        ))}
-      </Row>
 
       {/* Controls */}
       <Card style={{ borderRadius: 12, marginBottom: 24 }}>
@@ -175,9 +138,9 @@ export default function Forecast() {
               style={{ width: '100%' }}
               size="large"
             >
+              <Option value="sales">Sales</Option>
               <Option value="revenue">Revenue</Option>
               <Option value="demand">Demand</Option>
-              <Option value="inventory">Inventory</Option>
             </Select>
           </Col>
           <Col xs={24} sm={10}>
@@ -228,7 +191,7 @@ export default function Forecast() {
         <Card style={{ borderRadius: 12, textAlign: 'center', padding: 40 }}>
           <Spin size="large" />
           <Text style={{ display: 'block', marginTop: 16, color: '#888' }}>
-            Running {modelInfo.name} model for {periods} days...
+            Training and forecasting with {modelInfo.name} for {periods} days...
           </Text>
         </Card>
       )}
@@ -297,12 +260,12 @@ export default function Forecast() {
               <AreaChart data={predictions}>
                 <defs>
                   <linearGradient id="predGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor={modelInfo.color} stopOpacity={0.2} />
-                    <stop offset="95%" stopColor={modelInfo.color} stopOpacity={0}   />
+                    <stop offset="5%" stopColor={modelInfo.color} stopOpacity={0.2} />
+                    <stop offset="95%" stopColor={modelInfo.color} stopOpacity={0} />
                   </linearGradient>
                   <linearGradient id="upperGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor={modelInfo.color} stopOpacity={0.08} />
-                    <stop offset="95%" stopColor={modelInfo.color} stopOpacity={0}    />
+                    <stop offset="5%" stopColor={modelInfo.color} stopOpacity={0.08} />
+                    <stop offset="95%" stopColor={modelInfo.color} stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -321,7 +284,7 @@ export default function Forecast() {
                     `NPR ${Number(v).toLocaleString()}`,
                     n === 'predicted' ? 'Predicted'
                       : n === 'upper' ? 'Upper Bound'
-                      : 'Lower Bound',
+                        : 'Lower Bound',
                   ]}
                   labelFormatter={l => `Date: ${l}`}
                 />
@@ -366,13 +329,11 @@ export default function Forecast() {
                       size="small"
                       style={{
                         borderRadius: 8,
-                        border: model === modelKey
-                          ? `2px solid ${MODEL_INFO[modelKey]?.color}`
-                          : '1px solid #f0f0f0',
+                        border: `2px solid ${MODEL_INFO[modelKey]?.color || modelInfo.color}`,
                       }}
                     >
                       <Text strong style={{
-                        color: MODEL_INFO[modelKey]?.color,
+                        color: MODEL_INFO[modelKey]?.color || modelInfo.color,
                         display: 'block',
                         marginBottom: 12,
                         fontSize: 15,
@@ -380,9 +341,9 @@ export default function Forecast() {
                         {MODEL_INFO[modelKey]?.name}
                       </Text>
                       {[
-                        { label: 'MAE',  value: metrics.mae.toLocaleString() },
+                        { label: 'MAE', value: metrics.mae.toLocaleString() },
                         { label: 'RMSE', value: metrics.rmse.toLocaleString() },
-                        { label: 'R²',   value: metrics.r2.toFixed(4) },
+                        { label: 'R²', value: metrics.r2.toFixed(4) },
                       ].map(m => (
                         <div key={m.label} style={{
                           display: 'flex',

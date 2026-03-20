@@ -33,10 +33,10 @@ async def seed():
     async with Session() as db:
         print("Seeding users...")
         admin = User(email="admin@bi.com", full_name="Admin User",
-                     hashed_password=hash_password("admin123"), role=UserRole.admin, is_premium=True)
-        analyst = User(email="analyst@bi.com", full_name="Data Analyst",
-                       hashed_password=hash_password("analyst123"), role=UserRole.analyst)
-        db.add_all([admin, analyst])
+                     hashed_password=hash_password("admin123"), role=UserRole.admin)
+        standard_user = User(email="user@bi.com", full_name="Standard User",
+                     hashed_password=hash_password("user123"), role=UserRole.analyst)
+        db.add_all([admin, standard_user])
         await db.flush()
 
         print("Seeding products...")

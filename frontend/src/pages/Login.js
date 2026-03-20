@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 import {
   Form, Input, Button, Card, Typography,
-  Alert, Divider, Checkbox, message,
+  Alert, Checkbox, message,
 } from 'antd';
 import {
   UserOutlined, LockOutlined,
   EyeInvisibleOutlined, EyeTwoTone,
   SafetyCertificateOutlined,
 } from '@ant-design/icons';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 
 const { Title, Text } = Typography;
@@ -132,22 +132,7 @@ export default function Login() {
 
             <Form.Item
               name="password"
-              label={
-                <div style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  width: '100%',
-                  alignItems: 'center',
-                }}>
-                  <span>Password</span>
-                  <Link
-                    to="/forgot-password"
-                    style={{ fontSize: 13, fontWeight: 400 }}
-                  >
-                    Forgot password?
-                  </Link>
-                </div>
-              }
+              label="Password"
               rules={[{ required: true, message: 'Please enter your password' }]}
             >
               <Input.Password
