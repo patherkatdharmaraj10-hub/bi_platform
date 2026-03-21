@@ -1,10 +1,7 @@
-// =============================================================================
-// FILE: C:\bi-platform\frontend\src\pages\Dashboard.js
-// =============================================================================
 import React, { useState, useEffect } from 'react';
 import {
   Row, Col, Card, Statistic, Spin, Alert,
-  Progress, Table, Tag, Button, Typography,
+  Table, Tag, Button, Typography,
 } from 'antd';
 import {
   ArrowUpOutlined, ArrowDownOutlined,
@@ -21,7 +18,6 @@ import axios from '../api/axios';
 
 const { Text } = Typography;
 
-// ── KPI Card ─────────────────────────────────────────────────────────────
 function KPICard({ title, value, prefix, trend, icon, color, loading }) {
   return (
     <Card style={{
@@ -68,7 +64,6 @@ function KPICard({ title, value, prefix, trend, icon, color, loading }) {
   );
 }
 
-// ── Main Dashboard ────────────────────────────────────────────────────────
 export default function Dashboard() {
   const [kpis, setKpis]           = useState(null);
   const [trend, setTrend]         = useState([]);
@@ -82,10 +77,10 @@ export default function Dashboard() {
     setError(null);
     try {
       const [k, t, p, c] = await Promise.all([
-        axios.get('/api/v1/dashboard/kpis'),
-        axios.get('/api/v1/dashboard/revenue-trend'),
-        axios.get('/api/v1/dashboard/top-products'),
-        axios.get('/api/v1/dashboard/sales-by-channel'),
+        axios.get('/api/dashboard/kpis'),
+        axios.get('/api/dashboard/revenue-trend'),
+        axios.get('/api/dashboard/top-products'),
+        axios.get('/api/dashboard/sales-by-channel'),
       ]);
       setKpis(k.data);
       setTrend(t.data);
@@ -217,12 +212,12 @@ export default function Dashboard() {
       </Row>
 
       {/* Charts Row 1 */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+      <Row gutter={[16, 16]} style={{ marginBottom: 16 }} align="stretch">
         {/* Revenue Trend */}
-        <Col xs={24} lg={16}>
+        <Col xs={24} lg={16} style={{ display: 'flex' }}>
           <Card
             title="Revenue Trend — Last 90 Days"
-            style={{ borderRadius: 12 }}
+            style={{ borderRadius: 12, width: '100%', height: '100%' }}
             extra={<Tag color="blue">Daily</Tag>}
           >
             {loading ? (
@@ -278,10 +273,10 @@ export default function Dashboard() {
         </Col>
 
         {/* Sales by Channel */}
-        <Col xs={24} lg={8}>
+        <Col xs={24} lg={8} style={{ display: 'flex' }}>
           <Card
             title="Sales by Channel"
-            style={{ borderRadius: 12, height: '100%' }}
+            style={{ borderRadius: 12, width: '100%', height: '100%' }}
           >
             {loading ? (
               <div style={{ textAlign: 'center', padding: 60 }}>
@@ -289,55 +284,24 @@ export default function Dashboard() {
               </div>
             ) : (
               <>
-                <ResponsiveContainer width="100%" height={200}>
-                  <BarChart data={channels} layout="vertical">
+                <ResponsiveContainer width="100%" height={280}>
+                  <BarChart data={channels}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                     <XAxis
-                      type="number"
+                      dataKey="channel"
                       tick={{ fontSize: 10 }}
-                      tickFormatter={v => `${(v/1000).toFixed(0)}k`}
                     />
                     <YAxis
-                      type="category"
-                      dataKey="channel"
+                      type="number"
                       tick={{ fontSize: 12 }}
-                      width={70}
+                      tickFormatter={v => `${(v/1000).toFixed(0)}k`}
                     />
                     <Tooltip
                       formatter={v => [`NPR ${Number(v).toLocaleString()}`, 'Revenue']}
                     />
-                    <Bar dataKey="revenue" fill="#1677ff" radius={[0,4,4,0]} />
+                    <Bar dataKey="revenue" fill="#1677ff" radius={[4,4,0,0]} />
                   </BarChart>
                 </ResponsiveContainer>
-
-                {/* Channel breakdown */}
-                <div style={{ marginTop: 16 }}>
-                  {channels.map((c, i) => {
-                    const total = channels.reduce((s, x) => s + x.revenue, 0);
-                    const pct = total > 0
-                      ? Math.round((c.revenue / total) * 100)
-                      : 0;
-                    const colors = ['#1677ff', '#52c41a', '#faad14'];
-                    return (
-                      <div key={c.channel} style={{ marginBottom: 8 }}>
-                        <div style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          marginBottom: 4, fontSize: 12,
-                        }}>
-                          <Text>{c.channel}</Text>
-                          <Text strong>{pct}%</Text>
-                        </div>
-                        <Progress
-                          percent={pct}
-                          strokeColor={colors[i % colors.length]}
-                          showInfo={false}
-                          size="small"
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
               </>
             )}
           </Card>
@@ -346,7 +310,7 @@ export default function Dashboard() {
 
       {/* Top Products Table */}
       <Row gutter={[16, 16]}>
-        <Col xs={24} lg={14}>
+        <Col xs={24} lg={24}>
           <Card
             title="Top 5 Products by Revenue"
             style={{ borderRadius: 12 }}
@@ -360,67 +324,6 @@ export default function Dashboard() {
               size="small"
               loading={loading}
             />
-          </Card>
-        </Col>
-
-        {/* Summary Stats */}
-        <Col xs={24} lg={10}>
-          <Card
-            title="Quick Summary"
-            style={{ borderRadius: 12, height: '100%' }}
-          >
-            {loading ? <Spin /> : (
-              <div>
-                {[
-                  {
-                    label: 'Total Revenue (30 days)',
-                    value: `NPR ${Number(kpis?.total_revenue || 0).toLocaleString()}`,
-                    color: '#1677ff', pct: 75,
-                  },
-                  {
-                    label: 'Total Orders',
-                    value: kpis?.total_orders?.toLocaleString() || '0',
-                    color: '#52c41a', pct: 60,
-                  },
-                  {
-                    label: 'Total Customers',
-                    value: kpis?.total_customers?.toLocaleString() || '0',
-                    color: '#faad14', pct: 45,
-                  },
-                  {
-                    label: 'Avg Order Value',
-                    value: `NPR ${Number(kpis?.avg_order_value || 0).toLocaleString()}`,
-                    color: '#722ed1', pct: 55,
-                  },
-                  {
-                    label: 'Low Stock Alerts',
-                    value: kpis?.low_stock_alerts || '0',
-                    color: '#ff4d4f', pct: 30,
-                  },
-                ].map(item => (
-                  <div key={item.label} style={{ marginBottom: 16 }}>
-                    <div style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      marginBottom: 4,
-                    }}>
-                      <Text style={{ fontSize: 13, color: '#888' }}>
-                        {item.label}
-                      </Text>
-                      <Text strong style={{ color: item.color }}>
-                        {item.value}
-                      </Text>
-                    </div>
-                    <Progress
-                      percent={item.pct}
-                      strokeColor={item.color}
-                      showInfo={false}
-                      size="small"
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
           </Card>
         </Col>
       </Row>

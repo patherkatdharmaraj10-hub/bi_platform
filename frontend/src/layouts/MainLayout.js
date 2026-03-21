@@ -4,10 +4,11 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   DashboardOutlined, ShoppingCartOutlined, InboxOutlined,
   TeamOutlined, LineChartOutlined,
-  RobotOutlined, LogoutOutlined, SettingOutlined,
+  LogoutOutlined, SettingOutlined,
   UserOutlined, CrownOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '../store/authStore';
+import FloatingChatbot from '../components/FloatingChatbot';
 
 const { Header, Sider, Content } = Layout;
 const { Text } = Typography;
@@ -51,12 +52,6 @@ const ALL_MENU_ITEMS = [
     key: '/forecast',
     icon: <LineChartOutlined />,
     label: 'Forecast',
-    roles: ['admin', 'user'],
-  },
-  {
-    key: '/chatbot',
-    icon: <RobotOutlined />,
-    label: 'AI Chatbot',
     roles: ['admin', 'user'],
   },
   {
@@ -173,12 +168,6 @@ export default function MainLayout() {
                 },
                 { type: 'divider' },
                 {
-                  key: 'settings',
-                  icon: <SettingOutlined />,
-                  label: 'Settings',
-                  onClick: () => navigate('/settings'),
-                },
-                {
                   key: 'logout',
                   icon: <LogoutOutlined />,
                   label: 'Logout',
@@ -240,6 +229,7 @@ export default function MainLayout() {
         }}>
           <Outlet />
         </Content>
+        <FloatingChatbot />
       </Layout>
     </Layout>
   );

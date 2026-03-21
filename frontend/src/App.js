@@ -7,7 +7,6 @@ import Sales from './pages/Sales';
 import Inventory from './pages/Inventory';
 import Customers from './pages/Customers';
 import Forecast from './pages/Forecast';
-import Chatbot from './pages/Chatbot';
 import Login from './pages/Login';
 import Settings from './pages/Settings';
 import { useAuthStore } from './store/authStore';
@@ -58,7 +57,6 @@ function App() {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/sales"     element={<Sales />} />
             <Route path="/inventory" element={<Inventory />} />
-            <Route path="/chatbot"   element={<Chatbot />} />
 
             {/* Admin + User (analysis access) */}
             <Route path="/customers" element={

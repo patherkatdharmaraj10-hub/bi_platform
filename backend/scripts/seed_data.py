@@ -35,7 +35,7 @@ async def seed():
         admin = User(email="admin@bi.com", full_name="Admin User",
                      hashed_password=hash_password("admin123"), role=UserRole.admin)
         standard_user = User(email="user@bi.com", full_name="Standard User",
-                     hashed_password=hash_password("user123"), role=UserRole.analyst)
+                     hashed_password=hash_password("user123"), role=UserRole.user)
         db.add_all([admin, standard_user])
         await db.flush()
 

@@ -8,7 +8,7 @@ from typing import AsyncGenerator
 client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
 SYSTEM_PROMPT = """
-You are an expert Business Intelligence analyst assistant.
+You are an expert Business Intelligence user assistant.
 You have access to data about Sales, Inventory, and Customers.
 Answer questions clearly and concisely. When presenting numbers,
 format them with proper units (e.g. $12,450 or 24.5%).

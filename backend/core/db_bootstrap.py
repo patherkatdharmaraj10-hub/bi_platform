@@ -61,6 +61,35 @@ async def create_tables() -> None:
         await conn.execute(text("ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS department VARCHAR"))
 
 
+async def _ensure_user_role_enum_compatibility(db) -> None:
+    """Ensure DB enum labels match the application role values.
+
+    Older environments may have enum value "analyst" while the app now uses "user".
+    """
+    labels_result = await db.execute(
+        text(
+            """
+            SELECT e.enumlabel
+            FROM pg_enum e
+            JOIN pg_type t ON t.oid = e.enumtypid
+            WHERE t.typname = 'userrole'
+            """
+        )
+    )
+    labels = {str(r.enumlabel) for r in labels_result.fetchall()}
+
+    if "user" in labels:
+        return
+
+    if "analyst" in labels:
+        # Fast, in-place migration for existing deployments.
+        await db.execute(text("ALTER TYPE userrole RENAME VALUE 'analyst' TO 'user'"))
+        return
+
+    # Fresh/edge case: enum exists but lacks both labels.
+    await db.execute(text("ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'user'"))
+
+
 async def seed_default_users() -> List[str]:
     created: List[str] = []
     defaults = [
@@ -74,11 +103,13 @@ async def seed_default_users() -> List[str]:
             "email": "user@bi.com",
             "full_name": "Standard User",
             "password": "user123",
-            "role": UserRole.analyst,
+            "role": UserRole.user,
         },
     ]
 
     async with AsyncSessionLocal() as db:
+        await _ensure_user_role_enum_compatibility(db)
+
         for item in defaults:
             exists = await db.execute(select(User).where(User.email == item["email"]))
             if exists.scalar_one_or_none():
@@ -97,6 +128,35 @@ async def seed_default_users() -> List[str]:
         await db.commit()
 
     return created
+
+
+async def normalize_product_categories() -> int:
+    """Fix known product/category mismatches in existing environments."""
+    updates = {
+        "Office Chair": "Furniture",
+        "Standing Desk": "Furniture",
+    }
+
+    total_updated = 0
+    async with AsyncSessionLocal() as db:
+        for name, category in updates.items():
+            result = await db.execute(
+                text(
+                    """
+                    UPDATE products
+                    SET category = :category
+                    WHERE name = :name
+                      AND COALESCE(category, '') <> :category
+                    """
+                ),
+                {"name": name, "category": category},
+            )
+            total_updated += int(result.rowcount or 0)
+
+        if total_updated > 0:
+            await db.commit()
+
+    return total_updated
 
 
 async def get_database_status() -> Dict[str, object]:
@@ -141,6 +201,8 @@ async def bootstrap_database(ensure_schema_first: bool, seed_defaults: bool) -> 
     if seed_defaults:
         created_users = await seed_default_users()
 
+    category_fixes = await normalize_product_categories()
+
     after = await get_database_status()
 
     return {
@@ -148,4 +210,5 @@ async def bootstrap_database(ensure_schema_first: bool, seed_defaults: bool) -> 
         "before": before,
         "after": after,
         "created_users": created_users,
+        "category_fixes": category_fixes,
     }

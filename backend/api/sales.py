@@ -223,57 +223,6 @@ async def list_sales_records(
     return [dict(r._mapping) for r in result.fetchall()]
 
 
-@router.post("/records")
-async def create_sale(payload: SaleUpsertRequest, db: AsyncSession = Depends(get_db)):
-    product = await _fetch_product(db, payload.product_id)
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found.")
-
-    if payload.customer_id is not None:
-        customer = await _fetch_customer(db, payload.customer_id)
-        if not customer:
-            raise HTTPException(status_code=404, detail="Customer not found.")
-
-    channel = _normalize_channel(payload.channel)
-    unit_price = float(payload.unit_price if payload.unit_price is not None else product.price)
-    if unit_price <= 0:
-        raise HTTPException(status_code=400, detail="Unit price must be greater than 0.")
-
-    sale_date = payload.sale_date or datetime.utcnow()
-    if _is_before_today(sale_date):
-        raise HTTPException(status_code=400, detail="Sale date cannot be before today.")
-
-    quantity = int(payload.quantity)
-    discount = float(payload.discount or 0.0)
-    gross_sales = unit_price * quantity
-    total_amount = round(gross_sales * (1 - discount), 2)
-
-    await _adjust_inventory_for_sale(db, payload.product_id, quantity)
-
-    inserted = await db.execute(text("""
-        INSERT INTO sales (
-            product_id, customer_id, quantity, unit_price,
-            total_amount, discount, region, channel, sale_date
-        ) VALUES (
-            :product_id, :customer_id, :quantity, :unit_price,
-            :total_amount, :discount, :region, :channel, :sale_date
-        )
-        RETURNING id
-    """), {
-        "product_id": payload.product_id,
-        "customer_id": payload.customer_id,
-        "quantity": quantity,
-        "unit_price": unit_price,
-        "total_amount": total_amount,
-        "discount": discount,
-        "region": payload.region,
-        "channel": channel,
-        "sale_date": sale_date,
-    })
-    sale_id = inserted.fetchone().id
-    return await _sale_detail(db, sale_id)
-
-
 @router.put("/records/{sale_id}")
 async def update_sale(
     sale_id: int,

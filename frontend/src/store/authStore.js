@@ -16,7 +16,7 @@ export const useAuthStore = create(
   params.append('username', email);
   params.append('password', password);
   
-  const res = await axios.post('/api/v1/auth/login', params, {
+  const res = await axios.post('/api/auth/login', params, {
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
     },

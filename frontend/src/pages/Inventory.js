@@ -1,7 +1,3 @@
-// =============================================================================
-// FILE: C:\bi-platform\frontend\src\pages\Inventory.js
-// Phase 9 — Inventory Management
-// =============================================================================
 import React, { useState, useEffect } from 'react';
 import {
   Card, Table, Tag, Badge, Row, Col,
@@ -13,7 +9,7 @@ import {
   SearchOutlined, ReloadOutlined,
   WarningOutlined, CheckCircleOutlined,
   CloseCircleOutlined,
-  PlusOutlined, EditOutlined,
+  EditOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import axios from '../api/axios';
@@ -51,11 +47,11 @@ export default function Inventory() {
     setError(null);
     try {
       const [inv, sum, alt, rec, prod] = await Promise.all([
-        axios.get('/api/v1/inventory/status'),
-        axios.get('/api/v1/inventory/summary'),
-        axios.get('/api/v1/inventory/alerts'),
-        axios.get('/api/v1/inventory/records?limit=300'),
-        axios.get('/api/v1/inventory/products'),
+        axios.get('/api/inventory/status'),
+        axios.get('/api/inventory/summary'),
+        axios.get('/api/inventory/alerts'),
+        axios.get('/api/inventory/records?limit=300'),
+        axios.get('/api/inventory/products'),
       ]);
       setData(inv.data);
       setSummary(sum.data);
@@ -71,22 +67,6 @@ export default function Inventory() {
   };
 
   useEffect(() => { fetchData(); }, []);
-
-  const openCreate = () => {
-    setEditingRecord(null);
-    setSelectedProductStock(null);
-    setSelectedProductReorderPoint(null);
-    setSelectedProductSourceWarehouse('Kathmandu');
-    form.resetFields();
-    form.setFieldsValue({
-      quantity_on_hand: 0,
-      reorder_point: 50,
-      reorder_quantity: 200,
-      warehouse: 'Kathmandu',
-      last_restocked: dayjs(),
-    });
-    setModalOpen(true);
-  };
 
   const openEdit = (record) => {
     setEditingRecord(record);
@@ -106,7 +86,7 @@ export default function Inventory() {
 
   const handleProductChange = async (productId) => {
     try {
-      const res = await axios.get(`/api/v1/inventory/product-defaults/${productId}`);
+      const res = await axios.get(`/api/inventory/product-defaults/${productId}`);
       const currentStock = Number(res.data?.quantity_on_hand || 0);
       const currentReorderPoint = Number(res.data?.reorder_point || 50);
       const currentReorderQty = Number(res.data?.reorder_quantity || 200);
@@ -142,13 +122,13 @@ export default function Inventory() {
         last_restocked: values.last_restocked ? values.last_restocked.toISOString() : null,
       };
 
-      if (editingRecord) {
-        await axios.put(`/api/v1/inventory/records/${editingRecord.id}`, payload);
-        message.success('Inventory record updated successfully.');
-      } else {
-        await axios.post('/api/v1/inventory/records', payload);
-        message.success('Inventory record added successfully.');
+      if (!editingRecord) {
+        message.error('Creating inventory records is disabled.');
+        return;
       }
+
+      await axios.put(`/api/inventory/records/${editingRecord.id}`, payload);
+      message.success('Inventory record updated successfully.');
 
       setModalOpen(false);
       form.resetFields();
@@ -299,9 +279,6 @@ export default function Inventory() {
           </Text>
         </div>
         <Space>
-          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-            Add Inventory
-          </Button>
           <Button
             icon={<ReloadOutlined />}
             onClick={fetchData}
@@ -423,12 +400,12 @@ export default function Inventory() {
       </Card>
 
       <Modal
-        title={editingRecord ? 'Edit Inventory Record' : 'Add Inventory Record'}
+        title="Edit Inventory Record"
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
         onOk={submitRecord}
         confirmLoading={saving}
-        okText={editingRecord ? 'Update Inventory' : 'Create Inventory'}
+        okText="Update Inventory"
         width={720}
         destroyOnClose
       >

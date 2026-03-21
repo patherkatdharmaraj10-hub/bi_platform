@@ -1,7 +1,3 @@
-// =============================================================================
-// FILE: C:\bi-platform\frontend\src\pages\Sales.js
-// Phase 9 — Sales Analytics
-// =============================================================================
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Row, Col, Card, Statistic, Table, Tag,
@@ -10,7 +6,7 @@ import {
 } from 'antd';
 import {
   ReloadOutlined,
-  PlusOutlined, EditOutlined,
+  EditOutlined,
 } from '@ant-design/icons';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -49,14 +45,14 @@ export default function Sales() {
     setError(null);
     try {
       const [s, c, r, m, p, rec, prod, cust] = await Promise.all([
-        axios.get(`/api/v1/sales/summary?period=${period}`),
-        axios.get(`/api/v1/sales/by-category?period=${period}`),
-        axios.get(`/api/v1/sales/by-region?period=${period}`),
-        axios.get('/api/v1/sales/monthly-trend'),
-        axios.get(`/api/v1/sales/top-products?period=${period}&limit=10`),
-        axios.get('/api/v1/sales/records?limit=100'),
-        axios.get('/api/v1/sales/products'),
-        axios.get('/api/v1/sales/customers'),
+        axios.get(`/api/sales/summary?period=${period}`),
+        axios.get(`/api/sales/by-category?period=${period}`),
+        axios.get(`/api/sales/by-region?period=${period}`),
+        axios.get('/api/sales/monthly-trend'),
+        axios.get(`/api/sales/top-products?period=${period}&limit=10`),
+        axios.get('/api/sales/records?limit=100'),
+        axios.get('/api/sales/products'),
+        axios.get('/api/sales/customers'),
       ]);
       setSummary(s.data);
       setByCategory(c.data);
@@ -75,18 +71,6 @@ export default function Sales() {
   }, [period]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
-
-  const openCreate = () => {
-    setEditingSale(null);
-    form.resetFields();
-    form.setFieldsValue({
-      quantity: 1,
-      discount_pct: 0,
-      channel: 'retail',
-      region: 'Bagmati',
-    });
-    setModalOpen(true);
-  };
 
   const openEdit = (record) => {
     setEditingSale(record);
@@ -129,13 +113,13 @@ export default function Sales() {
           : dayjs().toISOString(),
       };
 
-      if (editingSale) {
-        await axios.put(`/api/v1/sales/records/${editingSale.id}`, payload);
-        message.success('Sale updated successfully.');
-      } else {
-        await axios.post('/api/v1/sales/records', payload);
-        message.success('Sale added successfully.');
+      if (!editingSale) {
+        message.error('Creating sales records is disabled.');
+        return;
       }
+
+      await axios.put(`/api/sales/records/${editingSale.id}`, payload);
+      message.success('Sale updated successfully.');
 
       setModalOpen(false);
       form.resetFields();
@@ -252,9 +236,6 @@ export default function Sales() {
           <Text type="secondary">{PERIOD_LABELS[period]}</Text>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-            Add Sale
-          </Button>
           <Select
             value={period}
             onChange={setPeriod}
@@ -361,11 +342,11 @@ export default function Sales() {
       </Card>
 
       {/* Category + Region Charts */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-        <Col xs={24} lg={14}>
+      <Row gutter={[16, 16]} style={{ marginBottom: 16 }} align="stretch">
+        <Col xs={24} lg={14} style={{ display: 'flex' }}>
           <Card
             title="Revenue by Category"
-            style={{ borderRadius: 12 }}
+            style={{ borderRadius: 12, width: '100%', height: '100%' }}
           >
             {loading ? <Spin /> : (
               <ResponsiveContainer width="100%" height={280}>
@@ -402,14 +383,14 @@ export default function Sales() {
           </Card>
         </Col>
 
-        <Col xs={24} lg={10}>
+        <Col xs={24} lg={10} style={{ display: 'flex' }}>
           <Card
             title="Sales by Region"
-            style={{ borderRadius: 12 }}
+            style={{ borderRadius: 12, width: '100%', height: '100%' }}
           >
             {loading ? <Spin /> : (
               <>
-                <ResponsiveContainer width="100%" height={200}>
+                <ResponsiveContainer width="100%" height={280}>
                   <PieChart>
                     <Pie
                       data={byRegion}
@@ -507,12 +488,12 @@ export default function Sales() {
       </Card>
 
       <Modal
-        title={editingSale ? 'Edit Sale Record' : 'Add Sale Record'}
+        title="Edit Sale Record"
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
         onOk={submitSale}
         confirmLoading={saving}
-        okText={editingSale ? 'Update Sale' : 'Create Sale'}
+        okText="Update Sale"
         width={760}
         destroyOnClose
       >

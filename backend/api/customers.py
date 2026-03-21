@@ -54,79 +54,6 @@ async def customer_records(
     return [dict(r._mapping) for r in result.fetchall()]
 
 
-@router.post("/records")
-async def create_customer(
-    payload: CustomerUpsertRequest,
-    db: AsyncSession = Depends(get_db),
-):
-    existing = await db.execute(text("""
-        SELECT id
-        FROM customers
-        WHERE LOWER(email) = LOWER(:email)
-        LIMIT 1
-    """), {"email": payload.email.strip()})
-    if existing.fetchone():
-        raise HTTPException(status_code=400, detail="Customer email already exists.")
-
-    inserted = await db.execute(text("""
-        INSERT INTO customers (
-            name,
-            email,
-            phone,
-            country,
-            region,
-            segment,
-            lifetime_value,
-            churn_risk_score,
-            acquisition_channel,
-            is_active
-        ) VALUES (
-            :name,
-            :email,
-            :phone,
-            :country,
-            :region,
-            :segment,
-            :lifetime_value,
-            :churn_risk_score,
-            :acquisition_channel,
-            :is_active
-        )
-        RETURNING id
-    """), {
-        "name": payload.name.strip(),
-        "email": payload.email.strip(),
-        "phone": payload.phone,
-        "country": payload.country,
-        "region": payload.region,
-        "segment": payload.segment,
-        "lifetime_value": payload.lifetime_value,
-        "churn_risk_score": payload.churn_risk_score,
-        "acquisition_channel": payload.acquisition_channel,
-        "is_active": payload.is_active,
-    })
-    customer_id = inserted.fetchone().id
-
-    row = await db.execute(text("""
-        SELECT
-            id,
-            name,
-            email,
-            phone,
-            country,
-            region,
-            segment,
-            ROUND(COALESCE(lifetime_value, 0)::numeric, 2) AS lifetime_value,
-            ROUND(COALESCE(churn_risk_score, 0)::numeric, 3) AS churn_risk_score,
-            acquisition_channel,
-            is_active,
-            created_at
-        FROM customers
-        WHERE id = :customer_id
-    """), {"customer_id": customer_id})
-    return dict(row.fetchone()._mapping)
-
-
 @router.put("/records/{customer_id}")
 async def update_customer(
     customer_id: int,
@@ -231,23 +158,6 @@ async def customer_segments(db: AsyncSession = Depends(get_db)):
             FROM customers
             GROUP BY segment
             ORDER BY total_ltv DESC
-        """))
-        return [dict(r._mapping) for r in result.fetchall()]
-    except Exception as e:
-        return {"error": str(e)}
-
-
-@router.get("/by-region")
-async def customers_by_region(db: AsyncSession = Depends(get_db)):
-    try:
-        result = await db.execute(text("""
-            SELECT
-                region,
-                COUNT(*) AS count,
-                ROUND(AVG(lifetime_value)::numeric, 2) AS avg_ltv
-            FROM customers
-            GROUP BY region
-            ORDER BY count DESC
         """))
         return [dict(r._mapping) for r in result.fetchall()]
     except Exception as e:

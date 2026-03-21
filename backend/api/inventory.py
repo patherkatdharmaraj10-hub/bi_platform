@@ -19,17 +19,8 @@ class InventoryUpsertRequest(BaseModel):
     last_restocked: datetime | None = None
 
 
-async def _warehouse_names(db: AsyncSession):
-    return [DEFAULT_WAREHOUSE]
-
-
 def _is_before_today(value: datetime) -> bool:
     return value.date() < datetime.now(timezone.utc).date()
-
-
-@router.get("/warehouses")
-async def list_warehouses(db: AsyncSession = Depends(get_db)):
-    return await _warehouse_names(db)
 
 
 @router.get("/products")
@@ -127,82 +118,6 @@ async def inventory_records(
     return [dict(r._mapping) for r in result.fetchall()]
 
 
-@router.post("/records")
-async def create_inventory_record(
-    payload: InventoryUpsertRequest,
-    db: AsyncSession = Depends(get_db),
-):
-    product = await db.execute(text("""
-        SELECT id FROM products WHERE id = :product_id
-    """), {"product_id": payload.product_id})
-    if not product.fetchone():
-        raise HTTPException(status_code=404, detail="Product not found.")
-
-    selected_warehouse = DEFAULT_WAREHOUSE
-
-    restocked_at = payload.last_restocked or datetime.utcnow()
-    if _is_before_today(restocked_at):
-        raise HTTPException(status_code=400, detail="Restock date cannot be before today.")
-
-    existing = await db.execute(text("""
-        SELECT id
-        FROM inventory
-        WHERE product_id = :product_id
-          AND LOWER(warehouse) = LOWER(:warehouse)
-        LIMIT 1
-    """), {
-        "product_id": payload.product_id,
-        "warehouse": selected_warehouse,
-    })
-    if existing.fetchone():
-        raise HTTPException(
-            status_code=400,
-            detail="Inventory for this product and warehouse already exists.",
-        )
-
-    inserted = await db.execute(text("""
-        INSERT INTO inventory (
-            product_id, warehouse, quantity_on_hand,
-            reorder_point, reorder_quantity, last_restocked, updated_at
-        ) VALUES (
-            :product_id, :warehouse, :quantity_on_hand,
-            :reorder_point, :reorder_quantity, :last_restocked, NOW()
-        )
-        RETURNING id
-    """), {
-        "product_id": payload.product_id,
-        "warehouse": selected_warehouse,
-        "quantity_on_hand": payload.quantity_on_hand,
-        "reorder_point": payload.reorder_point,
-        "reorder_quantity": payload.reorder_quantity,
-        "last_restocked": restocked_at,
-    })
-    inventory_id = inserted.fetchone().id
-
-    row = await db.execute(text("""
-        SELECT
-            i.id,
-            i.product_id,
-            p.name,
-            p.sku,
-            p.category,
-            i.warehouse,
-            i.quantity_on_hand,
-            i.reorder_point,
-            i.reorder_quantity,
-            i.last_restocked,
-            CASE
-                WHEN i.quantity_on_hand <= 0 THEN 'out_of_stock'
-                WHEN i.quantity_on_hand <= i.reorder_point THEN 'low_stock'
-                ELSE 'in_stock'
-            END AS status
-        FROM inventory i
-        JOIN products p ON p.id = i.product_id
-        WHERE i.id = :inventory_id
-    """), {"inventory_id": inventory_id})
-    return dict(row.fetchone()._mapping)
-
-
 @router.put("/records/{inventory_id}")
 async def update_inventory_record(
     inventory_id: int,
@@ -289,7 +204,10 @@ async def update_inventory_record(
         JOIN products p ON p.id = i.product_id
         WHERE i.id = :inventory_id
     """), {"inventory_id": inventory_id})
-    return dict(row.fetchone()._mapping)
+    updated = row.fetchone()
+    if not updated:
+        raise HTTPException(status_code=404, detail="Inventory record not found after update.")
+    return dict(updated._mapping)
 
 
 @router.get("/status")
@@ -353,6 +271,14 @@ async def inventory_summary(db: AsyncSession = Depends(get_db)):
             FROM inventory
         """))
         row = result.fetchone()
+        if not row:
+            return {
+                "total_products": 0,
+                "out_of_stock": 0,
+                "low_stock": 0,
+                "in_stock": 0,
+                "total_units": 0,
+            }
         return dict(row._mapping)
     except Exception as e:
         return {"error": str(e)}

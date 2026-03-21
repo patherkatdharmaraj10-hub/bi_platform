@@ -1,7 +1,3 @@
-// =============================================================================
-// FILE: C:\bi-platform\frontend\src\pages\Customers.js
-// Phase 9 — Customer Analytics
-// =============================================================================
 import React, { useState, useEffect } from 'react';
 import {
   Card, Table, Tag, Row, Col, Statistic,
@@ -13,7 +9,7 @@ import {
 import {
   ReloadOutlined,
   WarningOutlined,
-  PlusOutlined, EditOutlined,
+  EditOutlined,
 } from '@ant-design/icons';
 import {
   PieChart, Pie, Cell, Tooltip as RechartTooltip,
@@ -43,11 +39,11 @@ export default function Customers() {
     setError(null);
     try {
       const [sum, seg, ch, acq, rec] = await Promise.all([
-        axios.get('/api/v1/customers/summary'),
-        axios.get('/api/v1/customers/segments'),
-        axios.get('/api/v1/customers/churn-risk'),
-        axios.get('/api/v1/customers/acquisition'),
-        axios.get('/api/v1/customers/records'),
+        axios.get('/api/customers/summary'),
+        axios.get('/api/customers/segments'),
+        axios.get('/api/customers/churn-risk'),
+        axios.get('/api/customers/acquisition'),
+        axios.get('/api/customers/records'),
       ]);
       setSummary(sum.data);
       setSegments(seg.data);
@@ -62,23 +58,6 @@ export default function Customers() {
   };
 
   useEffect(() => { fetchData(); }, []);
-
-  const openAddModal = () => {
-    setEditingCustomer(null);
-    form.setFieldsValue({
-      name: '',
-      email: '',
-      phone: '',
-      country: '',
-      region: '',
-      segment: 'individual',
-      lifetime_value: 0,
-      churn_risk_score: 0,
-      acquisition_channel: '',
-      is_active: true,
-    });
-    setModalOpen(true);
-  };
 
   const openEditModal = (customer) => {
     setEditingCustomer(customer);
@@ -108,13 +87,13 @@ export default function Customers() {
       const values = await form.validateFields();
       setSaving(true);
 
-      if (editingCustomer?.id) {
-        await axios.put(`/api/v1/customers/records/${editingCustomer.id}`, values);
-        message.success('Customer updated successfully.');
-      } else {
-        await axios.post('/api/v1/customers/records', values);
-        message.success('Customer added successfully.');
+      if (!editingCustomer?.id) {
+        message.error('Creating customers is disabled.');
+        return;
       }
+
+      await axios.put(`/api/customers/records/${editingCustomer.id}`, values);
+      message.success('Customer updated successfully.');
 
       closeModal();
       fetchData();
@@ -272,13 +251,6 @@ export default function Customers() {
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
           <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={openAddModal}
-          >
-            Add Customer
-          </Button>
-          <Button
             icon={<ReloadOutlined />}
             onClick={fetchData}
             loading={loading}
@@ -338,12 +310,12 @@ export default function Customers() {
       </Row>
 
       {/* Segments + Acquisition */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-        <Col xs={24} lg={12}>
-          <Card title="Customer Segments" style={{ borderRadius: 12 }}>
+      <Row gutter={[16, 16]} style={{ marginBottom: 16 }} align="stretch">
+        <Col xs={24} lg={12} style={{ display: 'flex' }}>
+          <Card title="Customer Segments" style={{ borderRadius: 12, width: '100%', height: '100%' }}>
             {loading ? <Spin /> : (
               <>
-                <ResponsiveContainer width="100%" height={200}>
+                <ResponsiveContainer width="100%" height={280}>
                   <PieChart>
                     <Pie
                       data={segments}
@@ -391,21 +363,21 @@ export default function Customers() {
           </Card>
         </Col>
 
-        <Col xs={24} lg={12}>
-          <Card title="Acquisition Channels" style={{ borderRadius: 12 }}>
+        <Col xs={24} lg={12} style={{ display: 'flex' }}>
+          <Card title="Acquisition Channels" style={{ borderRadius: 12, width: '100%', height: '100%' }}>
             {loading ? <Spin /> : (
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={acquisition} layout="vertical">
+              <ResponsiveContainer width="100%" height={280}>
+                <BarChart data={acquisition}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis type="number" tick={{ fontSize: 11 }} />
-                  <YAxis
-                    type="category"
+                  <XAxis
                     dataKey="acquisition_channel"
                     tick={{ fontSize: 12 }}
-                    width={80}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 11 }}
                   />
                   <RechartTooltip />
-                  <Bar dataKey="customers" fill="#1677ff" radius={[0, 4, 4, 0]} name="Customers" />
+                  <Bar dataKey="customers" fill="#1677ff" radius={[4, 4, 0, 0]} name="Customers" />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -452,12 +424,12 @@ export default function Customers() {
       </Card>
 
       <Modal
-        title={editingCustomer ? 'Edit Customer' : 'Add Customer'}
+        title="Edit Customer"
         open={modalOpen}
         onOk={handleSaveCustomer}
         onCancel={closeModal}
         confirmLoading={saving}
-        okText={editingCustomer ? 'Update' : 'Create'}
+        okText="Update"
         width={760}
       >
         <Form form={form} layout="vertical">

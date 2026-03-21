@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Card, Table, Tag, Button, Modal, Form,
   Input, Select, Switch, Row, Col, Statistic,
@@ -7,11 +7,10 @@ import {
 } from 'antd';
 import {
   UserAddOutlined, CrownOutlined,
-  UserOutlined, TeamOutlined, SettingOutlined,
-  SecurityScanOutlined, BellOutlined, DatabaseOutlined,
+  UserOutlined, TeamOutlined,
+  SecurityScanOutlined,
   KeyOutlined, EditOutlined, DeleteOutlined,
   CheckCircleOutlined, CloseCircleOutlined,
-  ReloadOutlined, SaveOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '../store/authStore';
 import axios from '../api/axios';
@@ -57,19 +56,6 @@ function UserAvatar({ name, role, size = 36 }) {
   );
 }
 
-const DEFAULT_SYSTEM_SETTINGS = {
-  siteName: 'BI Platform',
-  maxLoginAttempts: '5',
-  sessionTimeout: '60',
-  enableNotifications: true,
-  enableAuditLog: true,
-  enableTwoFactor: false,
-  dataRefreshInterval: '30',
-  maxExportRows: '10000',
-  enableChatbot: true,
-  enableForecasting: true,
-};
-
 export default function Settings() {
   const { user } = useAuthStore();
   const [users, setUsers] = useState([]);
@@ -78,22 +64,17 @@ export default function Settings() {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
-  const [systemSettings, setSystemSettings] = useState(DEFAULT_SYSTEM_SETTINGS);
   const [addForm] = Form.useForm();
   const [editForm] = Form.useForm();
   const [passwordForm] = Form.useForm();
-  const [systemForm] = Form.useForm();
   const [activeTab, setActiveTab] = useState('users');
-  const [dbStatus, setDbStatus] = useState(null);
   const [usersBusy, setUsersBusy] = useState(false);
   const [permissionsBusy, setPermissionsBusy] = useState(false);
-  const [systemBusy, setSystemBusy] = useState(false);
-  const [dbBusy, setDbBusy] = useState(false);
 
   const fetchUsers = async () => {
     setUsersBusy(true);
     try {
-      const res = await axios.get('/api/v1/system/users');
+      const res = await axios.get('/api/system/users');
       setUsers(res.data || []);
     } catch (err) {
       message.error(err.response?.data?.detail || 'Failed to load users');
@@ -105,7 +86,7 @@ export default function Settings() {
   const fetchPermissions = async () => {
     setPermissionsBusy(true);
     try {
-      const res = await axios.get('/api/v1/system/permissions');
+      const res = await axios.get('/api/system/permissions');
       setPermissions(res.data || []);
     } catch (err) {
       message.error(err.response?.data?.detail || 'Failed to load permissions');
@@ -114,47 +95,14 @@ export default function Settings() {
     }
   };
 
-  const fetchSystemConfig = useCallback(async () => {
-    setSystemBusy(true);
-    try {
-      const res = await axios.get('/api/v1/system/config');
-      const config = res.data || DEFAULT_SYSTEM_SETTINGS;
-      setSystemSettings(config);
-      systemForm.setFieldsValue(config);
-    } catch (err) {
-      message.error(err.response?.data?.detail || 'Failed to load system settings');
-    } finally {
-      setSystemBusy(false);
-    }
-  }, [systemForm]);
-
-  const fetchDbStatus = async () => {
-    setDbBusy(true);
-    try {
-      const res = await axios.get('/api/v1/system/db/status');
-      setDbStatus(res.data || null);
-    } catch (err) {
-      message.error(err.response?.data?.detail || 'Failed to load database status');
-    } finally {
-      setDbBusy(false);
-    }
-  };
-
   useEffect(() => {
     fetchUsers();
     fetchPermissions();
-    fetchSystemConfig();
-  }, [fetchSystemConfig]);
-
-  useEffect(() => {
-    if (activeTab === 'database') {
-      fetchDbStatus();
-    }
-  }, [activeTab]);
+  }, []);
 
   const handleAddUser = async (values) => {
     try {
-      await axios.post('/api/v1/system/users', {
+      await axios.post('/api/system/users', {
         full_name: values.full_name,
         email: values.email,
         role: values.role,
@@ -170,7 +118,7 @@ export default function Settings() {
 
   const handleEditUser = async (values) => {
     try {
-      await axios.put(`/api/v1/system/users/${selectedUser.id}`, {
+      await axios.put(`/api/system/users/${selectedUser.id}`, {
         full_name: values.full_name,
         email: values.email,
         role: values.role,
@@ -189,7 +137,7 @@ export default function Settings() {
       return;
     }
     try {
-      await axios.delete(`/api/v1/system/users/${record.id}`);
+      await axios.delete(`/api/system/users/${record.id}`);
       message.success(`User ${record.full_name} deleted`);
       await fetchUsers();
     } catch (err) {
@@ -203,7 +151,7 @@ export default function Settings() {
       return;
     }
     try {
-      await axios.patch(`/api/v1/system/users/${record.id}/active`, {
+      await axios.patch(`/api/system/users/${record.id}/active`, {
         is_active: !record.is_active,
       });
       message.success(`User ${record.is_active ? 'deactivated' : 'activated'}`);
@@ -219,7 +167,7 @@ export default function Settings() {
       return;
     }
     try {
-      await axios.post(`/api/v1/system/users/${selectedUser.id}/password`, {
+      await axios.post(`/api/system/users/${selectedUser.id}/password`, {
         new_password: values.new_password,
       });
       message.success(`Password changed for ${selectedUser.full_name}`);
@@ -227,37 +175,6 @@ export default function Settings() {
       passwordForm.resetFields();
     } catch (err) {
       message.error(err.response?.data?.detail || 'Failed to change password');
-    }
-  };
-
-  const handleSaveSystemSettings = async (values) => {
-    setSystemBusy(true);
-    try {
-      const res = await axios.put('/api/v1/system/config', values);
-      setSystemSettings(res.data || values);
-      systemForm.setFieldsValue(res.data || values);
-      message.success('System settings saved successfully');
-    } catch (err) {
-      message.error(err.response?.data?.detail || 'Failed to save system settings');
-    } finally {
-      setSystemBusy(false);
-    }
-  };
-
-  const initializeDatabase = async () => {
-    setDbBusy(true);
-    try {
-      const res = await axios.post('/api/v1/system/db/initialize', {
-        ensure_schema: true,
-        seed_default_users: true,
-      });
-      setDbStatus(res.data?.after || dbStatus);
-      message.success('Database initialized successfully');
-      await fetchUsers();
-    } catch (err) {
-      message.error(err.response?.data?.detail || 'Database initialization failed');
-    } finally {
-      setDbBusy(false);
     }
   };
 
@@ -490,84 +407,6 @@ export default function Settings() {
                   </Row>
 
                   <Table loading={permissionsBusy} dataSource={permissionsSource} columns={permissionColumns} rowKey='feature' pagination={false} size='middle' />
-                </div>
-              ),
-            },
-            {
-              key: 'system',
-              label: <span><SettingOutlined /> System</span>,
-              children: (
-                <Form form={systemForm} layout='vertical' initialValues={systemSettings} onFinish={handleSaveSystemSettings}>
-                  <Row gutter={[24, 0]}>
-                    <Col xs={24} md={12}>
-                      <Card title={<span><SettingOutlined /> General Settings</span>} style={{ borderRadius: 12, marginBottom: 16 }}>
-                        <Form.Item name='siteName' label='Platform Name'><Input prefix={<SettingOutlined />} /></Form.Item>
-                        <Form.Item name='dataRefreshInterval' label='Data Refresh Interval (seconds)'><Input type='number' min={10} max={300} /></Form.Item>
-                        <Form.Item name='maxExportRows' label='Max Export Rows'><Input type='number' min={100} max={100000} /></Form.Item>
-                        <Form.Item name='sessionTimeout' label='Session Timeout (minutes)'><Input type='number' min={15} max={1440} /></Form.Item>
-                        <Form.Item name='maxLoginAttempts' label='Max Login Attempts'><Input type='number' min={3} max={10} /></Form.Item>
-                      </Card>
-                    </Col>
-                    <Col xs={24} md={12}>
-                      <Card title={<span><BellOutlined /> Feature Toggles</span>} style={{ borderRadius: 12, marginBottom: 16 }}>
-                        {[
-                          { name: 'enableChatbot', label: 'AI Chatbot', desc: 'Enable AI chatbot for all users' },
-                          { name: 'enableForecasting', label: 'ML Forecasting', desc: 'Enable ML forecasting features' },
-                          { name: 'enableNotifications', label: 'Notifications', desc: 'Enable system notifications' },
-                          { name: 'enableAuditLog', label: 'Audit Logging', desc: 'Log all user actions' },
-                          { name: 'enableTwoFactor', label: 'Two Factor Auth', desc: 'Require 2FA for admin accounts' },
-                        ].map(item => (
-                          <div key={item.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid #f0f0f0' }}>
-                            <div>
-                              <div style={{ fontWeight: 500 }}>{item.label}</div>
-                              <div style={{ color: '#888', fontSize: 12 }}>{item.desc}</div>
-                            </div>
-                            <Form.Item name={item.name} valuePropName='checked' style={{ margin: 0 }}>
-                              <Switch />
-                            </Form.Item>
-                          </div>
-                        ))}
-                      </Card>
-                    </Col>
-                  </Row>
-                  <div style={{ textAlign: 'right', marginTop: 16 }}>
-                    <Button onClick={() => systemForm.setFieldsValue(systemSettings)} icon={<ReloadOutlined />} style={{ marginRight: 12 }}>
-                      Reset
-                    </Button>
-                    <Button type='primary' htmlType='submit' icon={<SaveOutlined />} loading={systemBusy}>
-                      Save Settings
-                    </Button>
-                  </div>
-                </Form>
-              ),
-            },
-            {
-              key: 'database',
-              label: <span><DatabaseOutlined /> Database</span>,
-              children: (
-                <div>
-                  <Alert
-                    message='PostgreSQL Database Status'
-                    description={dbStatus ? (dbStatus.is_ready ? 'Required tables are ready for frontend features.' : `Missing tables: ${(dbStatus.missing_tables || []).join(', ')}`) : 'Checking database status...'}
-                    type={dbStatus?.is_ready ? 'success' : 'warning'}
-                    showIcon
-                    style={{ marginBottom: 24 }}
-                  />
-
-                  <Button type='primary' onClick={initializeDatabase} loading={dbBusy} style={{ marginBottom: 16 }}>
-                    Initialize Database
-                  </Button>
-
-                  <Row gutter={[16, 16]}>
-                    <Col xs={24} sm={12}><Card style={{ borderRadius: 12, borderLeft: '4px solid #1677ff' }}><div style={{ color: '#888', fontSize: 12 }}>Engine</div><div style={{ fontSize: 16, fontWeight: 600, color: '#1677ff' }}>{dbStatus?.database_url?.split(':')[0] || 'PostgreSQL'}</div></Card></Col>
-                    <Col xs={24} sm={12}><Card style={{ borderRadius: 12, borderLeft: '4px solid #52c41a' }}><div style={{ color: '#888', fontSize: 12 }}>Status</div><div style={{ fontSize: 16, fontWeight: 600, color: '#389e0d' }}>{dbStatus?.is_ready ? 'Connected' : 'Needs setup'}</div></Card></Col>
-                  </Row>
-
-                  {!!dbStatus?.missing_tables?.length && (
-                    <Card title='Missing Tables' style={{ borderRadius: 12, marginTop: 16 }}>
-                      {(dbStatus.missing_tables || []).map(t => <Tag key={t} color='red'>{t}</Tag>)}
-                    </Card>
-                  )}
                 </div>
               ),
             },
