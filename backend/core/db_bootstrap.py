@@ -62,10 +62,6 @@ async def create_tables() -> None:
 
 
 async def _ensure_user_role_enum_compatibility(db) -> None:
-    """Ensure DB enum labels match the application role values.
-
-    Older environments may have enum value "analyst" while the app now uses "user".
-    """
     labels_result = await db.execute(
         text(
             """
@@ -131,7 +127,6 @@ async def seed_default_users() -> List[str]:
 
 
 async def normalize_product_categories() -> int:
-    """Fix known product/category mismatches in existing environments."""
     updates = {
         "Office Chair": "Furniture",
         "Standing Desk": "Furniture",

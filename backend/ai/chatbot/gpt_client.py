@@ -1,6 +1,3 @@
-"""
-OpenAI GPT-4 client for BI conversational queries.
-"""
 from openai import AsyncOpenAI
 from core.config import settings
 from typing import AsyncGenerator

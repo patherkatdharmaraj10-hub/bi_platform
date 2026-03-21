@@ -356,10 +356,6 @@ async def _ensure_monthly_snapshot(db: AsyncSession) -> dict:
 
 @router.get("/latest")
 async def latest_sales_forecast(db: AsyncSession = Depends(get_db)):
-    """
-    Returns current monthly sales forecast snapshot.
-    If no snapshot exists for the current month, it trains and stores one.
-    """
     return await _ensure_monthly_snapshot(db)
 
 

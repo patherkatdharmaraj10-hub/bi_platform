@@ -1,7 +1,3 @@
-"""
-Seed the database with realistic sample data.
-Run: python scripts/seed_data.py
-"""
 import asyncio
 import random
 from datetime import datetime, timedelta

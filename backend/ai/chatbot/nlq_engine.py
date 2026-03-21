@@ -1,7 +1,3 @@
-"""
-Natural Language Query (NLQ) Engine.
-Translates plain English to SQL queries.
-"""
 from typing import Optional, Dict, Any
 import re
 
