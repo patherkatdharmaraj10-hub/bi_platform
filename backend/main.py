@@ -2,18 +2,46 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from contextlib import asynccontextmanager
+import asyncio
+import logging
 from core.database import engine, Base
 from core.db_bootstrap import seed_default_users, normalize_product_categories
+from api import forecast
+
+
+logger = logging.getLogger(__name__)
+
+
+async def _forecast_refresh_daemon() -> None:
+    while True:
+        try:
+            await forecast.ensure_monthly_forecast_snapshot()
+        except Exception as exc:
+            logger.warning("Monthly forecast daemon run failed: %s", exc)
+        await asyncio.sleep(24 * 60 * 60)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    forecast_task = None
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     # Ensure first-run environments always have baseline login accounts.
     await seed_default_users()
     await normalize_product_categories()
+    try:
+        await forecast.ensure_monthly_forecast_snapshot()
+    except Exception as exc:
+        # Startup should continue even if forecast generation temporarily fails.
+        logger.warning("Monthly forecast bootstrap failed: %s", exc)
+    forecast_task = asyncio.create_task(_forecast_refresh_daemon())
     yield
+    if forecast_task:
+        forecast_task.cancel()
+        try:
+            await forecast_task
+        except asyncio.CancelledError:
+            pass
     await engine.dispose()
 
 
@@ -33,7 +61,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from api import auth, sales, inventory, customers, forecast, chatbot, dashboard, system
+from api import auth, sales, inventory, customers, chatbot, dashboard, system
 
 app.include_router(auth.router,      prefix="/api/auth",      tags=["Auth"])
 app.include_router(dashboard.router, prefix="/api/dashboard", tags=["Dashboard"])

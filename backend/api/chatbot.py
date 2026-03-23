@@ -164,17 +164,23 @@ async def _data_backed_answer(intent: str, db: AsyncSession) -> str | None:
 
     if intent == "forecast":
         row = (await db.execute(text("""
-            SELECT
-                COALESCE(SUM(CASE WHEN sale_date >= NOW() - INTERVAL '30 days' THEN total_amount END), 0) AS curr,
-                COALESCE(SUM(CASE WHEN sale_date < NOW() - INTERVAL '30 days'
-                                   AND sale_date >= NOW() - INTERVAL '60 days' THEN total_amount END), 0) AS prev
-            FROM sales
+            SELECT forecast_month, summary, generated_at
+            FROM monthly_sales_forecasts
+            ORDER BY forecast_month DESC
+            LIMIT 1
         """))).fetchone()
-        curr = float(row.curr or 0)
-        prev = float(row.prev or 0)
-        growth_factor = (curr / prev) if prev > 0 else 1.0
-        projected = curr * growth_factor
-        return f"Projected revenue for next 30 days (trend-based): {_format_npr(projected)}."
+        if not row:
+            return "Monthly model forecast is not available yet. Open Forecast page once to generate it."
+
+        summary = row.summary or {}
+        month = str(row.forecast_month)
+        total_units = float(summary.get("total_predicted_units", 0) or 0)
+        top_product = str(summary.get("top_product", "-"))
+        top_units = float(summary.get("top_predicted_units", 0) or 0)
+        return (
+            f"Model forecast for next 30 days ({month}): total {total_units:,.0f} units. "
+            f"Top product: {top_product} ({top_units:,.0f} units)."
+        )
 
     if intent == "anomalies":
         rows = (await db.execute(text("""

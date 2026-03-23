@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from pathlib import Path
 import json
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
@@ -8,15 +9,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import numpy as np
 import pandas as pd
 import joblib
-import xgboost as xgb
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
-from core.database import get_db
+from core.database import get_db, AsyncSessionLocal
 
 router = APIRouter()
 
-MODEL_SAVE_DIR = Path(__file__).resolve().parents[2] / "ml" / "models" / "saved"
-MODEL_FILE = MODEL_SAVE_DIR / "xgboost_sales_units_global.pkl"
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = BACKEND_ROOT.parent
+MODEL_SAVE_DIR = BACKEND_ROOT / "ml" / "models" / "saved"
+MODEL_FILE = MODEL_SAVE_DIR / "xgboost_sales.pkl"
+METRICS_FILE = PROJECT_ROOT / "notebooks" / "outputs" / "model_validation" / "evaluation_metrics.json"
 DEFAULT_PERIODS = 30
 MODEL_NAME = "xgboost"
 METRIC = "sales_units_by_product"
@@ -27,12 +29,25 @@ FEATURES = [
     "quarter",
     "doy",
     "year",
+    "weekofyear",
+    "is_weekend",
+    "month_sin",
+    "month_cos",
+    "dow_sin",
+    "dow_cos",
     "lag_1",
     "lag_7",
     "lag_14",
     "lag_30",
+    "lag_60",
     "roll_7",
+    "roll_14",
     "roll_30",
+    "roll_60",
+    "roll_std_7",
+    "roll_std_30",
+    "ewm_14",
+    "ewm_30",
 ]
 
 
@@ -93,57 +108,64 @@ async def _sales_history_from_db(db: AsyncSession) -> pd.DataFrame:
     return df
 
 
-def _feature_frame(df: pd.DataFrame) -> pd.DataFrame:
-    d = df.copy().sort_values(["product_id", "ds"]).reset_index(drop=True)
-    d["dow"] = d["ds"].dt.dayofweek
-    d["month"] = d["ds"].dt.month
-    d["quarter"] = d["ds"].dt.quarter
-    d["doy"] = d["ds"].dt.dayofyear
-    d["year"] = d["ds"].dt.year
+def _build_complete_daily_history(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
 
-    grouped = d.groupby("product_id", group_keys=False)
-    d["lag_1"] = grouped["y"].shift(1)
-    d["lag_7"] = grouped["y"].shift(7)
-    d["lag_14"] = grouped["y"].shift(14)
-    d["lag_30"] = grouped["y"].shift(30)
-    d["roll_7"] = grouped["y"].shift(1).rolling(7).mean().reset_index(level=0, drop=True)
-    d["roll_30"] = grouped["y"].shift(1).rolling(30).mean().reset_index(level=0, drop=True)
-    d = d.dropna().reset_index(drop=True)
-    return d
+    frames = []
+    for pid, g in df.groupby("product_id"):
+        ordered = g.sort_values("ds")
+        idx = pd.date_range(ordered["ds"].min(), ordered["ds"].max(), freq="D")
+        expanded = (
+            ordered.set_index("ds")
+            .reindex(idx)
+            .rename_axis("ds")
+            .reset_index()
+        )
+        expanded["y"] = expanded["y"].fillna(0.0).astype(float)
+        expanded["product_id"] = int(pid)
+        expanded["product_name"] = (
+            expanded["product_name"].ffill().bfill().iloc[0]
+            if "product_name" in expanded.columns and expanded["product_name"].notna().any()
+            else f"Product {int(pid)}"
+        )
+        frames.append(expanded[["product_id", "product_name", "ds", "y"]])
 
-
-def _train_global_model(train_frame: pd.DataFrame) -> xgb.XGBRegressor:
-    model = xgb.XGBRegressor(
-        n_estimators=280,
-        max_depth=6,
-        learning_rate=0.05,
-        subsample=0.9,
-        colsample_bytree=0.9,
-        random_state=42,
+    return (
+        pd.concat(frames, ignore_index=True)
+        .sort_values(["product_id", "ds"])
+        .reset_index(drop=True)
     )
-    model.fit(train_frame[FEATURES], train_frame["y"])
-    MODEL_SAVE_DIR.mkdir(parents=True, exist_ok=True)
-    joblib.dump(model, MODEL_FILE)
-    return model
 
 
-def _evaluate_model(model: xgb.XGBRegressor, test_frame: pd.DataFrame) -> dict:
-    if test_frame.empty:
-        return {"mae": 0.0, "rmse": 0.0, "r2": 0.0}
+def _load_regression_model() -> Any:
+    if not MODEL_FILE.exists():
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Trained model file not found at backend/ml/models/saved/xgboost_sales.pkl. "
+                "Run the notebook training first to generate model artifacts."
+            ),
+        )
+    return joblib.load(MODEL_FILE)
 
-    pred = model.predict(test_frame[FEATURES])
-    mae = float(mean_absolute_error(test_frame["y"], pred))
-    rmse = float(np.sqrt(mean_squared_error(test_frame["y"], pred)))
-    r2 = float(r2_score(test_frame["y"], pred))
-    return {
-        "mae": round(mae, 2),
-        "rmse": round(rmse, 2),
-        "r2": round(r2, 4),
-    }
+
+def _load_training_metrics() -> dict:
+    if not METRICS_FILE.exists():
+        return {}
+
+    try:
+        with METRICS_FILE.open("r", encoding="utf-8") as f:
+            payload = json.load(f)
+        if isinstance(payload, dict):
+            return payload
+    except Exception:
+        pass
+    return {}
 
 
 def _predict_next_month_units_by_product(
-    model: xgb.XGBRegressor,
+    model: Any,
     raw_df: pd.DataFrame,
     forecast_start: datetime.date,
 ) -> list[dict]:
@@ -179,8 +201,15 @@ def _predict_next_month_units_by_product(
             lag7 = hist[-7] if len(hist) >= 7 else hist[-1]
             lag14 = hist[-14] if len(hist) >= 14 else hist[-1]
             lag30 = hist[-30] if len(hist) >= 30 else hist[-1]
+            lag60 = hist[-60] if len(hist) >= 60 else hist[-1]
             roll7 = float(np.mean(hist[-7:])) if len(hist) >= 7 else float(np.mean(hist))
+            roll14 = float(np.mean(hist[-14:])) if len(hist) >= 14 else float(np.mean(hist))
             roll30 = float(np.mean(hist[-30:])) if len(hist) >= 30 else float(np.mean(hist))
+            roll60 = float(np.mean(hist[-60:])) if len(hist) >= 60 else float(np.mean(hist))
+            roll_std_7 = float(np.std(hist[-7:], ddof=1)) if len(hist) >= 8 else float(np.std(hist))
+            roll_std_30 = float(np.std(hist[-30:], ddof=1)) if len(hist) >= 31 else float(np.std(hist))
+            ewm_14 = float(pd.Series(hist).ewm(span=14, adjust=False).mean().iloc[-1])
+            ewm_30 = float(pd.Series(hist).ewm(span=30, adjust=False).mean().iloc[-1])
 
             row = pd.DataFrame([
                 {
@@ -190,15 +219,29 @@ def _predict_next_month_units_by_product(
                     "quarter": ((day.month - 1) // 3) + 1,
                     "doy": day.dayofyear,
                     "year": day.year,
+                    "weekofyear": int(day.isocalendar().week),
+                    "is_weekend": int(day.dayofweek >= 5),
+                    "month_sin": float(np.sin(2.0 * np.pi * day.month / 12.0)),
+                    "month_cos": float(np.cos(2.0 * np.pi * day.month / 12.0)),
+                    "dow_sin": float(np.sin(2.0 * np.pi * day.dayofweek / 7.0)),
+                    "dow_cos": float(np.cos(2.0 * np.pi * day.dayofweek / 7.0)),
                     "lag_1": lag1,
                     "lag_7": lag7,
                     "lag_14": lag14,
                     "lag_30": lag30,
+                    "lag_60": lag60,
                     "roll_7": roll7,
+                    "roll_14": roll14,
                     "roll_30": roll30,
+                    "roll_60": roll60,
+                    "roll_std_7": roll_std_7,
+                    "roll_std_30": roll_std_30,
+                    "ewm_14": ewm_14,
+                    "ewm_30": ewm_30,
                 }
             ])
 
+            row = row[FEATURES]
             pred = float(model.predict(row)[0])
             pred = max(pred, 0.0)
             info["predicted_units"] += pred
@@ -242,26 +285,16 @@ def _build_summary(predictions: list[dict]) -> dict:
 
 
 async def _generate_sales_forecast(db: AsyncSession, periods: int = DEFAULT_PERIODS) -> dict:
-    df = await _sales_history_from_db(db)
-    if len(df) < 45:
+    raw_df = await _sales_history_from_db(db)
+    if len(raw_df) < 1:
         raise HTTPException(
             status_code=400,
-            detail="Not enough sales history to train forecast. Add more sales records first.",
+            detail="Not enough sales history to generate monthly forecast.",
         )
 
-    frame = _feature_frame(df)
-    if len(frame) < 100:
-        raise HTTPException(
-            status_code=400,
-            detail="Not enough product-level history to generate monthly forecast.",
-        )
-
-    split_idx = int(len(frame) * 0.8)
-    train_frame = frame.iloc[:split_idx].copy()
-    test_frame = frame.iloc[split_idx:].copy()
-
-    model = _train_global_model(train_frame)
-    metrics = _evaluate_model(model, test_frame)
+    df = _build_complete_daily_history(raw_df)
+    model = _load_regression_model()
+    metrics = _load_training_metrics()
     forecast_month = _next_month_start()
     predictions = _predict_next_month_units_by_product(model, df, forecast_month)
 
@@ -280,12 +313,12 @@ async def _generate_sales_forecast(db: AsyncSession, periods: int = DEFAULT_PERI
         "predictions": predictions,
         "summary": summary,
         "metrics": metrics,
-        "trained_rows": int(len(train_frame)),
+        "trained_rows": int(len(df)),
         "model_file": str(MODEL_FILE),
     }
 
 
-async def _ensure_monthly_snapshot(db: AsyncSession) -> dict:
+async def _ensure_monthly_snapshot(db: AsyncSession, force_regenerate: bool = False) -> dict:
     await _ensure_forecast_table(db)
     forecast_month = _next_month_start()
 
@@ -297,7 +330,7 @@ async def _ensure_monthly_snapshot(db: AsyncSession) -> dict:
         LIMIT 1
     """), {"forecast_month": forecast_month})).fetchone()
 
-    if existing:
+    if existing and not force_regenerate:
         return {
             "forecast_month": str(existing.forecast_month),
             "metric": existing.metric,
@@ -354,8 +387,46 @@ async def _ensure_monthly_snapshot(db: AsyncSession) -> dict:
     }
 
 
+async def _delete_latest_snapshot(db: AsyncSession) -> str | None:
+    await _ensure_forecast_table(db)
+    deleted = (await db.execute(text("""
+        DELETE FROM monthly_sales_forecasts
+        WHERE id IN (
+            SELECT id
+            FROM monthly_sales_forecasts
+            ORDER BY forecast_month DESC, generated_at DESC
+            LIMIT 1
+        )
+        RETURNING forecast_month
+    """))).fetchone()
+    if not deleted:
+        return None
+    return str(deleted.forecast_month)
+
+
 @router.get("/latest")
 async def latest_sales_forecast(db: AsyncSession = Depends(get_db)):
     return await _ensure_monthly_snapshot(db)
+
+
+@router.post("/refresh-monthly")
+async def refresh_monthly_sales_forecast(db: AsyncSession = Depends(get_db)):
+    return await _ensure_monthly_snapshot(db, force_regenerate=True)
+
+
+@router.post("/rebuild-next-month")
+async def rebuild_next_month_sales_forecast(db: AsyncSession = Depends(get_db)):
+    deleted_month = await _delete_latest_snapshot(db)
+    rebuilt = await _ensure_monthly_snapshot(db, force_regenerate=True)
+    return {
+        "deleted_forecast_month": deleted_month,
+        "rebuilt": rebuilt,
+    }
+
+
+async def ensure_monthly_forecast_snapshot() -> None:
+    async with AsyncSessionLocal() as db:
+        await _ensure_monthly_snapshot(db)
+        await db.commit()
 
 
